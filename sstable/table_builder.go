@@ -15,6 +15,7 @@ type TableBuilder struct {
 	indexBlockBuilder BlockBuilder
 	pendingIndexEntry bool
 	pendingHandle     BlockHandle
+	lastKey           string
 }
 
 func NewTableBuilder(options *internal.Options, file log.WritableFile) *TableBuilder {
@@ -28,7 +29,7 @@ func NewTableBuilder(options *internal.Options, file log.WritableFile) *TableBui
 
 func (builder *TableBuilder) Add(key, value string) {
 	if builder.pendingIndexEntry {
-		builder.indexBlockBuilder.Add(key, builder.pendingHandle.EncodeTo())
+		builder.indexBlockBuilder.Add(builder.lastKey, builder.pendingHandle.EncodeTo())
 		builder.pendingIndexEntry = false
 	}
 
@@ -37,15 +38,19 @@ func (builder *TableBuilder) Add(key, value string) {
 	if builder.dataBlockBuilder.CurrentSizeEstimate() >= builder.options.BlockSize {
 		builder.flush()
 	}
+
+	builder.lastKey = key
 }
 
 func (builder *TableBuilder) flush() {
+	if builder.dataBlockBuilder.Empty() {
+		return
+	}
 	builder.pendingHandle = builder.writeBlock(&builder.dataBlockBuilder)
 	if builder.status.OK() {
 		builder.pendingIndexEntry = true
 		builder.file.Flush()
 	}
-
 }
 
 func (builder *TableBuilder) writeBlock(blockBuilder *BlockBuilder) BlockHandle {
@@ -58,9 +63,25 @@ func (builder *TableBuilder) writeBlock(blockBuilder *BlockBuilder) BlockHandle 
 	builder.offset += uint64(blockSize)
 
 	builder.status = builder.file.Append(string(blockContent))
+
+	blockBuilder.Reset()
 	return handle
 }
 
 func (builder *TableBuilder) Finish() {
 	builder.flush()
+
+	// Write index block
+	if builder.pendingIndexEntry {
+		builder.indexBlockBuilder.Add(builder.lastKey, builder.pendingHandle.EncodeTo())
+		builder.pendingIndexEntry = false
+	}
+	indexBlockHandle := builder.writeBlock(&builder.indexBlockBuilder)
+
+	// write footer block
+	footer := Footer{IndexBlockHandle: indexBlockHandle}
+	builder.status = builder.file.Append(footer.EncodeTo())
+
+	// close sstable
+	builder.file.Close()
 }

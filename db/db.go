@@ -44,7 +44,7 @@ func (db *DB) Get(key string) (string, Status) {
 
 func (db *DB) makeRoomForWrite() Status {
 	for {
-		if db.mem.ApproximateMemoryUsage() < db.option.Write_buffer_size {
+		if db.mem.ApproximateMemoryUsage() < uint64(db.option.Write_buffer_size) {
 			// There is room in current memtable
 			return StatusOK()
 		} else if db.imm != nil {

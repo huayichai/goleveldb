@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 )
@@ -14,4 +15,8 @@ const (
 
 func EncodeTo(w io.Writer, data any) error {
 	return binary.Write(w, binary.LittleEndian, data)
+}
+
+func Compare(a, b []byte) int {
+	return bytes.Compare(a, b)
 }
