@@ -15,12 +15,15 @@ type Options struct {
 	// so you may wish to adjust this parameter to control memory usage.
 	// Also, a larger write buffer will result in a longer recovery time
 	// the next time the database is opened.
-	Write_buffer_size uint64
+	Write_buffer_size uint32
+
+	BlockSize uint32
 }
 
 func NewOptions() *Options {
 	var option Options
 	option.Create_if_missing = false
 	option.Write_buffer_size = 4 * 1024 * 1024
+	option.BlockSize = 4 * 1024
 	return &option
 }
