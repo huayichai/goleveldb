@@ -33,24 +33,8 @@ func Open(option internal.Options, name string) *DB {
 	db.mem = memtable.NewMemTable()
 	db.imm = nil
 	db.cond = sync.NewCond(&db.mu)
-	db.current = version.NewVersion(db.dbname)
-
-	// create db dir
-	_, err := os.Stat(name)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err = os.MkdirAll(name, 0755)
-			if err != nil {
-				panic("create dir fialed")
-			}
-		}
-	}
-
+	db.Recover()
 	return &db
-}
-
-func (db *DB) Close() {
-
 }
 
 func (db *DB) Put(key, value string) error {
@@ -96,7 +80,7 @@ func (db *DB) makeRoomForWrite() error {
 			// Attempt to switch to a new memtable and trigger compaction of old
 			db.imm = db.mem
 			db.mem = memtable.NewMemTable()
-			db.backgroundCompaction()
+			go db.backgroundCompaction()
 		}
 	}
 }
@@ -134,5 +118,58 @@ func (db *DB) writeLevel0Table(imm memtable.MemTable, ver *version.Version) erro
 	// add meta to version
 	ver.AddFile(0, &meta)
 
+	return nil
+}
+
+func (db *DB) Close() {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	// save mem, imm
+	for db.imm != nil {
+		db.cond.Wait()
+	}
+	db.writeLevel0Table(db.mem, db.current)
+
+	// save version
+	err := db.saveManifestFile()
+	if err != nil {
+		panic("SaveManifestFile failed")
+	}
+}
+
+func (db *DB) Recover() {
+	_, err := os.Stat(db.dbname)
+	// db not exist
+	if err != nil && os.IsNotExist(err) {
+		err = os.MkdirAll(db.dbname, 0755)
+		if err != nil {
+			panic("Create db fialed")
+		}
+		db.current = version.NewVersion(db.dbname)
+		return
+	} else { // recover from last close
+		db.current = version.NewVersion(db.dbname)
+		file, err := log.NewLinuxFile(internal.ManifestFileName(db.dbname))
+		if err != nil {
+			panic("Recover failed")
+		}
+		data, err := file.Read(0, uint32(file.Size()))
+		if err != nil {
+			panic("Recover failed")
+		}
+		db.current.DecodeFrom(data)
+	}
+}
+
+func (db *DB) saveManifestFile() error {
+	manifestContent := db.current.EncodeTo()
+	file, err := log.NewLinuxFile(internal.ManifestFileName(db.dbname))
+	if err != nil {
+		return err
+	}
+	file.Append(string(manifestContent))
+	file.Flush()
+	file.Close()
 	return nil
 }
