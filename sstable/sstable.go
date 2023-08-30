@@ -1,8 +1,8 @@
 package sstable
 
 import (
-	"github.com/huayichai/goleveldb/db"
-	"github.com/huayichai/goleveldb/internal"
+	"encoding/binary"
+
 	"github.com/huayichai/goleveldb/log"
 )
 
@@ -13,54 +13,43 @@ type SSTable struct {
 	dataBlock  *Block
 }
 
-func OpenSSTable(file log.RandomAccessFile, size uint64) (*SSTable, db.Status) {
+func OpenSSTable(file log.RandomAccessFile, size uint64) (*SSTable, error) {
 	var table SSTable
 	table.file = file
 
 	// Read the footer
-	footer_data, status := table.file.Read(size-uint64(KEncodedLength), uint32(KEncodedLength))
-	if !status.OK() {
-		return nil, status
+	footer_data, err := table.file.Read(size-uint64(KEncodedLength), uint32(KEncodedLength))
+	if err != nil {
+		return nil, err
 	}
 	table.footer.DecodeFrom(footer_data)
 
 	// Read the index block
-	table.indexBlock, status = table.readBlock(table.footer.IndexBlockHandle)
-	if !status.OK() {
-		return nil, status
+	table.indexBlock, err = NewBlock(table.file, table.footer.IndexBlockHandle)
+	if err != nil {
+		return nil, err
 	}
 
 	// Read the data block
-	table.dataBlock, status = table.readBlock(BlockHandle{Offset: 0, Size: table.footer.IndexBlockHandle.Offset})
-	if !status.OK() {
-		return nil, status
+	table.dataBlock, err = NewBlock(table.file, BlockHandle{Offset: 0, Size: table.footer.IndexBlockHandle.Offset})
+	if err != nil {
+		return nil, err
 	}
 
-	return &table, status
+	return &table, nil
 }
 
-func (table *SSTable) Get(key []byte) ([]byte, db.Status) {
-	cur := uint32(0)
-	for cur < table.dataBlock.Size {
-		n, cur_key, value := DecodeEntryFrom(table.dataBlock.Data, cur)
-		cmp := internal.Compare(cur_key, key)
-		if cmp == 0 {
-			return value, db.StatusOK()
-		} else if cmp > 0 {
-			return nil, db.StatusNotFound("")
-		}
-		cur += n
+// Firstly, locate the block according to the index block,
+// and then search by sequential traversal.
+func (table *SSTable) Get(key []byte) ([]byte, error) {
+	// search in index block
+	_, pos_bytes, err := table.indexBlock.Get(0, key)
+	if err != nil {
+		return nil, err
 	}
-	return nil, db.StatusNotFound("")
-}
+	offset := binary.LittleEndian.Uint32(pos_bytes)
 
-func (table *SSTable) readBlock(blockHandle BlockHandle) (*Block, db.Status) {
-	var block Block
-	var status db.Status
-	block.Size = uint32(blockHandle.Size)
-	block.Data, status = table.file.Read(blockHandle.Offset, uint32(blockHandle.Size))
-	if !status.OK() {
-		return nil, status
-	}
-	return &block, status
+	// search in data block
+	_, v, err := table.dataBlock.Get(offset, key)
+	return v, err
 }

@@ -1,6 +1,8 @@
 package memtable
 
-import "github.com/huayichai/goleveldb/internal"
+import (
+	"github.com/huayichai/goleveldb/internal"
+)
 
 type MapTable struct {
 	m           map[string]string
@@ -28,4 +30,8 @@ func (mt *MapTable) ApproximateMemoryUsage() uint64 {
 	return mt.memoryUsage
 }
 
-var _ MemTable = (*MapTable)(nil)
+func (mt *MapTable) GetMap() map[string]string {
+	return mt.m
+}
+
+// var _ MemTable = (*MapTable)(nil)

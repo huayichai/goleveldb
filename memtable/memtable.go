@@ -8,8 +8,9 @@ type MemTable interface {
 	Add(valueType internal.ValueType, key, value string)
 	Get(key string) (string, bool)
 	ApproximateMemoryUsage() uint64
+	Iterator() internal.Iterator
 }
 
 func NewMemTable() MemTable {
-	return NewMapTable()
+	return NewSkipListTable()
 }

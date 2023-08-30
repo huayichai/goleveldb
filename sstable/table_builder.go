@@ -1,7 +1,6 @@
 package sstable
 
 import (
-	"github.com/huayichai/goleveldb/db"
 	"github.com/huayichai/goleveldb/internal"
 	"github.com/huayichai/goleveldb/log"
 )
@@ -9,7 +8,7 @@ import (
 type TableBuilder struct {
 	options           *internal.Options
 	file              log.WritableFile
-	status            db.Status
+	status            error
 	offset            uint64
 	dataBlockBuilder  BlockBuilder
 	indexBlockBuilder BlockBuilder
@@ -27,6 +26,8 @@ func NewTableBuilder(options *internal.Options, file log.WritableFile) *TableBui
 	}
 }
 
+// Add entry to data block
+// If the the data block exceeds the threshold, flush and insert an index in the index block.
 func (builder *TableBuilder) Add(key, value string) {
 	if builder.pendingIndexEntry {
 		builder.indexBlockBuilder.Add(builder.lastKey, builder.pendingHandle.EncodeTo())
@@ -47,7 +48,7 @@ func (builder *TableBuilder) flush() {
 		return
 	}
 	builder.pendingHandle = builder.writeBlock(&builder.dataBlockBuilder)
-	if builder.status.OK() {
+	if builder.status == nil {
 		builder.pendingIndexEntry = true
 		builder.file.Flush()
 	}
@@ -84,4 +85,8 @@ func (builder *TableBuilder) Finish() {
 
 	// close sstable
 	builder.file.Close()
+}
+
+func (builder *TableBuilder) FileSize() uint64 {
+	return builder.offset
 }

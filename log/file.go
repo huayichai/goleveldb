@@ -1,43 +1,40 @@
 package log
 
 import (
-	"fmt"
 	"os"
-
-	"github.com/huayichai/goleveldb/db"
 )
 
 type WritableFile interface {
-	Append(data string) db.Status
+	Append(data string) error
 	Close()
 	Flush()
 	Sync()
 }
 
 type RandomAccessFile interface {
-	Read(offset uint64, n uint32) ([]byte, db.Status)
+	Read(offset uint64, n uint32) ([]byte, error)
 }
 
 type LinuxFile struct {
 	file *os.File
 }
 
-func NewLinuxFile(fileName string) (*LinuxFile, db.Status) {
+func NewLinuxFile(fileName string) (*LinuxFile, error) {
 	var lf LinuxFile
 	var err error
 	lf.file, err = os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0777)
 	if err != nil {
-		return nil, db.StatusIOError(fmt.Sprintf("create or open file %s failed", fileName))
+		return nil, err
 	}
-	return &lf, db.StatusOK()
+	return &lf, nil
 }
 
-func (lf *LinuxFile) Append(data string) db.Status {
+func (lf *LinuxFile) Append(data string) error {
 	_, err := lf.file.WriteString(data)
 	if err != nil {
-		return db.StatusIOError(err.Error())
+		return err
 	}
-	return db.StatusOK()
+	return nil
 }
 
 func (lf *LinuxFile) Close() {
@@ -54,13 +51,13 @@ func (lf *LinuxFile) Sync() {
 
 var _ WritableFile = (*LinuxFile)(nil)
 
-func (lf *LinuxFile) Read(offset uint64, n uint32) ([]byte, db.Status) {
+func (lf *LinuxFile) Read(offset uint64, n uint32) ([]byte, error) {
 	buf := make([]byte, n)
 	_, err := lf.file.ReadAt(buf, int64(offset))
 	if err != nil {
-		return nil, db.StatusIOError(err.Error())
+		return nil, err
 	} else {
-		return buf, db.StatusOK()
+		return buf, nil
 	}
 }
 

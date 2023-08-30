@@ -1,0 +1,7 @@
+package internal
+
+import "fmt"
+
+func SSTableFileName(dbname string, number uint64) string {
+	return fmt.Sprintf("%s/%06d.ldb", dbname, number)
+}

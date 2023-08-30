@@ -94,7 +94,7 @@ func TestSSTable1(t *testing.T) {
 	}
 
 	_, s := table.Get([]byte("not_exist_key"))
-	if s.OK() {
+	if s == nil {
 		t.Fatalf("failed get key")
 	}
 

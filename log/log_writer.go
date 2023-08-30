@@ -1,7 +1,5 @@
 package log
 
-import "github.com/huayichai/goleveldb/db"
-
 type LogWriter struct {
 	dest WritableFile
 }
@@ -12,10 +10,10 @@ func NewLogWriter(dest WritableFile) *LogWriter {
 	}
 }
 
-func (writer *LogWriter) AddRecord(data string) db.Status {
-	s := writer.dest.Append(data)
-	if s.OK() {
+func (writer *LogWriter) AddRecord(data string) error {
+	err := writer.dest.Append(data)
+	if err != nil {
 		writer.dest.Sync()
 	}
-	return s
+	return nil
 }

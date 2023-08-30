@@ -1,10 +1,40 @@
 package sstable
 
-import "github.com/huayichai/goleveldb/internal"
+import (
+	"fmt"
+
+	"github.com/huayichai/goleveldb/internal"
+	"github.com/huayichai/goleveldb/log"
+)
 
 type Block struct {
 	Data []byte
 	Size uint32
+}
+
+// Read block data from file
+func NewBlock(file log.RandomAccessFile, blockHandle BlockHandle) (*Block, error) {
+	var block Block
+	var err error
+	block.Size = uint32(blockHandle.Size)
+	block.Data, err = file.Read(blockHandle.Offset, uint32(blockHandle.Size))
+	if err != nil {
+		return nil, err
+	}
+	return &block, err
+}
+
+func (block *Block) Get(offset uint32, key []byte) ([]byte, []byte, error) {
+	cur_offset := offset
+	for cur_offset < block.Size {
+		n, cur_key, value := DecodeEntryFrom(block.Data, cur_offset)
+		cmp := internal.Compare(cur_key, key)
+		if cmp >= 0 {
+			return cur_key, value, nil
+		}
+		cur_offset += n
+	}
+	return nil, nil, fmt.Errorf("%s", "Not Found")
 }
 
 type BlockIterator struct {

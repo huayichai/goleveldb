@@ -1,4 +1,4 @@
-package db
+package internal
 
 type Iterator interface {
 	Valid() bool
