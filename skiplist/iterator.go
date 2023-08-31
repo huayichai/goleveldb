@@ -15,13 +15,11 @@ func (it *Iterator) Valid() bool {
 // Returns the key at the current position.
 // REQUIRES: Valid()
 func (it *Iterator) Key() []byte {
-	code := it.node.key.([]byte)
-	return internal.DecodeInternalKeyFrom(code)
+	return it.node.key.([]byte)
 }
 
 func (it *Iterator) Value() []byte {
-	code := it.node.key.([]byte)
-	return internal.DecodeInternalValueFrom(code)
+	return it.node.key.([]byte)
 }
 
 // Advances to the next position.

@@ -1,10 +1,5 @@
 package internal
 
-const (
-	NumLevels                int    = 7
-	L0_SlowdownWritesTrigger uint32 = 8
-)
-
 type Options struct {
 	// If true, the database will be created if it is missing.
 	Create_if_missing bool

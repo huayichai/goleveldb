@@ -2,6 +2,8 @@ package sstable
 
 import (
 	"encoding/binary"
+
+	"github.com/huayichai/goleveldb/internal"
 )
 
 type BlockHandle struct {
@@ -9,11 +11,11 @@ type BlockHandle struct {
 	Size   uint64
 }
 
-func (handle *BlockHandle) EncodeTo() string {
+func (handle *BlockHandle) EncodeTo() []byte {
 	p := make([]byte, 16)
-	binary.LittleEndian.PutUint64(p, handle.Offset)
-	binary.LittleEndian.PutUint64(p[8:], handle.Size)
-	return string(p)
+	internal.EncodeFixed64(p, handle.Offset)
+	internal.EncodeFixed64(p[8:], handle.Size)
+	return p
 }
 
 type Footer struct {

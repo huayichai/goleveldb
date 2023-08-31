@@ -38,7 +38,7 @@ func (meta *FileMetaData) DecodeFrom(data []byte) uint32 {
 type Version struct {
 	dbname         string
 	NextFileNumber uint64
-	LastSequence   uint64
+	LastSequence   internal.SequenceNumber
 	Files          [internal.NumLevels][]*FileMetaData
 }
 
@@ -62,8 +62,9 @@ func (v *Version) AddFile(level uint32, meta *FileMetaData) {
 	}
 }
 
-func (v *Version) Get(key []byte) ([]byte, error) {
+func (v *Version) Get(internal_key internal.InternalKey) ([]byte, error) {
 	var filemetas []*FileMetaData
+	user_key := internal_key.ExtractUserKey()
 	for level := 0; level < 1; level++ {
 		numFiles := len(v.Files[level])
 		if numFiles == 0 {
@@ -72,7 +73,7 @@ func (v *Version) Get(key []byte) ([]byte, error) {
 		if level == 0 {
 			for idx := 0; idx < numFiles; idx++ {
 				meta := v.Files[level][idx]
-				if internal.Compare(meta.Smallest, key) <= 0 && internal.Compare(meta.Largest, key) >= 0 {
+				if internal.UserKeyCompare(meta.Smallest, user_key) <= 0 && internal.Compare(meta.Largest, user_key) >= 0 {
 					filemetas = append(filemetas, meta)
 				}
 			}
@@ -83,7 +84,7 @@ func (v *Version) Get(key []byte) ([]byte, error) {
 				return filemetas[i].Number > filemetas[j].Number
 			})
 		} else {
-
+			// not implement!
 		}
 		numFiles = len(filemetas)
 		for idx := 0; idx < numFiles; idx++ {
@@ -96,7 +97,7 @@ func (v *Version) Get(key []byte) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			value, err := sstable.Get(key)
+			value, err := sstable.Get(internal_key)
 			if err != nil {
 				return nil, err
 			}
@@ -109,7 +110,7 @@ func (v *Version) Get(key []byte) ([]byte, error) {
 func (v *Version) EncodeTo() []byte {
 	buf := make([]byte, 16)
 	binary.LittleEndian.PutUint64(buf, v.NextFileNumber)
-	binary.LittleEndian.PutUint64(buf[8:], v.LastSequence)
+	binary.LittleEndian.PutUint64(buf[8:], uint64(v.LastSequence))
 	for level := 0; level < len(v.Files); level++ {
 		level_size := len(v.Files[level])
 		tmp := make([]byte, 4)
@@ -124,7 +125,7 @@ func (v *Version) EncodeTo() []byte {
 
 func (v *Version) DecodeFrom(data []byte) {
 	v.NextFileNumber = binary.LittleEndian.Uint64(data)
-	v.LastSequence = binary.LittleEndian.Uint64(data[8:])
+	v.LastSequence = internal.SequenceNumber(binary.LittleEndian.Uint64(data[8:]))
 	offset := uint32(16)
 	size := uint32(len(data))
 	for level := 0; offset < size; level++ {

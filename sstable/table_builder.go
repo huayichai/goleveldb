@@ -14,7 +14,7 @@ type TableBuilder struct {
 	indexBlockBuilder BlockBuilder
 	pendingIndexEntry bool
 	pendingHandle     BlockHandle
-	lastKey           string
+	lastKey           internal.InternalKey
 }
 
 func NewTableBuilder(options *internal.Options, file log.WritableFile) *TableBuilder {
@@ -28,7 +28,7 @@ func NewTableBuilder(options *internal.Options, file log.WritableFile) *TableBui
 
 // Add entry to data block
 // If the the data block exceeds the threshold, flush and insert an index in the index block.
-func (builder *TableBuilder) Add(key, value string) {
+func (builder *TableBuilder) Add(key internal.InternalKey, value []byte) {
 	if builder.pendingIndexEntry {
 		builder.indexBlockBuilder.Add(builder.lastKey, builder.pendingHandle.EncodeTo())
 		builder.pendingIndexEntry = false

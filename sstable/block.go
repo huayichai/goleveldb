@@ -24,11 +24,11 @@ func NewBlock(file log.RandomAccessFile, blockHandle BlockHandle) (*Block, error
 	return &block, err
 }
 
-func (block *Block) Get(offset uint32, key []byte) ([]byte, []byte, error) {
+func (block *Block) Get(offset uint32, key internal.InternalKey) ([]byte, []byte, error) {
 	cur_offset := offset
 	for cur_offset < block.Size {
 		n, cur_key, value := DecodeEntryFrom(block.Data, cur_offset)
-		cmp := internal.Compare(cur_key, key)
+		cmp := internal.InternalKeyCompare(cur_key, key)
 		if cmp >= 0 {
 			return cur_key, value, nil
 		}
@@ -38,10 +38,11 @@ func (block *Block) Get(offset uint32, key []byte) ([]byte, []byte, error) {
 }
 
 type BlockIterator struct {
-	data    []byte
-	current uint32 // current_ is offset in data of current entry.
-	key     []byte
-	value   []byte
+	data             []byte
+	current          uint32 // current_ is offset in data of current entry.
+	key              internal.InternalKey
+	value            []byte
+	current_code_len uint32 // current kv entry len
 }
 
 func NewBlockIterator(block *Block) *BlockIterator {
@@ -58,7 +59,7 @@ func (iter *BlockIterator) Valid() bool {
 
 func (iter *BlockIterator) SeekToFirst() {
 	iter.current = 0
-	_, iter.key, iter.value = DecodeEntryFrom(iter.data, 0)
+	iter.current_code_len, iter.key, iter.value = DecodeEntryFrom(iter.data, 0)
 }
 
 func (iter *BlockIterator) SeekToLast() {
@@ -66,7 +67,7 @@ func (iter *BlockIterator) SeekToLast() {
 }
 
 func (iter *BlockIterator) Seek(target interface{}) {
-	for iter.Valid() && internal.Compare(target.([]byte), iter.key) < 0 {
+	for iter.Valid() && internal.InternalKeyCompare(target.(internal.InternalKey), iter.key) < 0 {
 		iter.Next()
 	}
 }
@@ -77,10 +78,10 @@ func (iter *BlockIterator) Next() {
 	}
 
 	// next key-value entry offset
-	iter.current += uint32(8 + len(iter.key) + len(iter.value))
+	iter.current += iter.current_code_len
 
 	// decode from bytes
-	_, iter.key, iter.value = DecodeEntryFrom(iter.data, iter.current)
+	iter.current_code_len, iter.key, iter.value = DecodeEntryFrom(iter.data, iter.current)
 }
 
 func (iter *BlockIterator) Prev() {
@@ -95,4 +96,4 @@ func (iter *BlockIterator) Value() []byte {
 	return iter.value
 }
 
-var Iterator = (*BlockIterator)(nil)
+var _ internal.Iterator = (*BlockIterator)(nil)

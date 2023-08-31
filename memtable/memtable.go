@@ -5,8 +5,8 @@ import (
 )
 
 type MemTable interface {
-	Add(valueType internal.ValueType, key, value string)
-	Get(key string) (string, bool)
+	Add(seq internal.SequenceNumber, valueType internal.ValueType, key, value []byte)
+	Get(key internal.LookupKey) ([]byte, bool)
 	ApproximateMemoryUsage() uint64
 	Iterator() internal.Iterator
 }

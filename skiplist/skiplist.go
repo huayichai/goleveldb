@@ -48,7 +48,7 @@ func (list *SkipList) Contains(key interface{}) bool {
 	list.mu.RLock()
 	defer list.mu.RUnlock()
 	x, _ := list.findGreaterOrEqual(key)
-	if x != nil && internal.Compare(x.key.([]byte), key.([]byte)) == 0 {
+	if x != nil && internal.LookupKeyCompare(x.key.([]byte), key.([]byte)) == 0 {
 		return true
 	}
 	return false
@@ -94,7 +94,7 @@ func (list *SkipList) findLessThan(key interface{}) *Node {
 	level := list.maxHeight - 1
 	for {
 		next := x.getNext(level)
-		if next == nil || internal.Compare(next.key.([]byte), key.([]byte)) >= 0 {
+		if next == nil || internal.LookupKeyCompare(next.key.([]byte), key.([]byte)) >= 0 {
 
 			if level == 0 {
 				return x
@@ -126,5 +126,5 @@ func (list *SkipList) findlast() *Node {
 }
 
 func (list *SkipList) keyIsAfterNode(key interface{}, n *Node) bool {
-	return (n != nil) && (internal.Compare(n.key.([]byte), key.([]byte)) < 0)
+	return (n != nil) && (internal.LookupKeyCompare(n.key.([]byte), key.([]byte)) < 0)
 }

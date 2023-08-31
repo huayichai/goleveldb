@@ -8,50 +8,50 @@ import (
 	"github.com/huayichai/goleveldb/log"
 )
 
-// func TestSSTableBuild(t *testing.T) {
-// 	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/file0"
-// 	os.Remove(path)
-// 	file, _ := log.NewLinuxFile(path)
-// 	defer file.Close()
-// 	options := internal.NewOptions()
-// 	options.BlockSize = 16
-// 	builder := NewTableBuilder(options, file)
+func TestSSTableBuild(t *testing.T) {
+	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/file0"
+	os.Remove(path)
+	file, _ := log.NewLinuxFile(path)
+	defer file.Close()
+	options := internal.NewOptions()
+	options.BlockSize = 16
+	builder := NewTableBuilder(options, file)
 
-// 	builder.Add("a", "valuea")
-// 	builder.Add("b", "valueb")
-// 	builder.Add("c", "valuec")
-// 	builder.Add("d", "valued")
-// 	builder.Finish()
-// }
+	builder.Add([]byte("a"), []byte("valuea"))
+	builder.Add([]byte("b"), []byte("valueb"))
+	builder.Add([]byte("c"), []byte("valuec"))
+	builder.Add([]byte("d"), []byte("valued"))
+	builder.Finish()
+}
 
-// func TestSSTableRead(t *testing.T) {
-// 	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/file0"
-// 	file, _ := log.NewLinuxFile(path)
-// 	table, _ := OpenSSTable(file, uint64(file.Size()))
+func TestSSTableRead(t *testing.T) {
+	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/file0"
+	file, _ := log.NewLinuxFile(path)
+	table, _ := OpenSSTable(file, uint64(file.Size()))
 
-// 	va, _ := table.Get([]byte("a"))
-// 	if internal.Compare(va, []byte("valuea")) != 0 {
-// 		t.Fatalf("failed get key a")
-// 	}
+	va, _ := table.Get([]byte("a"))
+	if internal.Compare(va, []byte("valuea")) != 0 {
+		t.Fatalf("failed get key a")
+	}
 
-// 	vb, _ := table.Get([]byte("b"))
-// 	if internal.Compare(vb, []byte("valueb")) != 0 {
-// 		t.Fatalf("failed get key b")
-// 	}
+	vb, _ := table.Get([]byte("b"))
+	if internal.Compare(vb, []byte("valueb")) != 0 {
+		t.Fatalf("failed get key b")
+	}
 
-// 	vc, _ := table.Get([]byte("c"))
-// 	if internal.Compare(vc, []byte("valuec")) != 0 {
-// 		t.Fatalf("failed get key c")
-// 	}
+	vc, _ := table.Get([]byte("c"))
+	if internal.Compare(vc, []byte("valuec")) != 0 {
+		t.Fatalf("failed get key c")
+	}
 
-// 	vd, _ := table.Get([]byte("d"))
-// 	if internal.Compare(vd, []byte("valued")) != 0 {
-// 		t.Fatalf("failed get key d")
-// 	}
+	vd, _ := table.Get([]byte("d"))
+	if internal.Compare(vd, []byte("valued")) != 0 {
+		t.Fatalf("failed get key d")
+	}
 
-// 	file.Close()
-// 	os.Remove(path)
-// }
+	file.Close()
+	os.Remove(path)
+}
 
 func TestSSTable1(t *testing.T) {
 	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/file1"
@@ -62,10 +62,10 @@ func TestSSTable1(t *testing.T) {
 	options.BlockSize = 16
 	builder := NewTableBuilder(options, file)
 	// add key value
-	builder.Add("1name", "huayichai")
-	builder.Add("2school", "nju")
-	builder.Add("3age", "23")
-	builder.Add("4gender", "male")
+	builder.Add([]byte("1name"), []byte("huayichai"))
+	builder.Add([]byte("2school"), []byte("nju"))
+	builder.Add([]byte("3age"), []byte("23"))
+	builder.Add([]byte("4gender"), []byte("male"))
 	builder.Finish()
 	file.Close()
 

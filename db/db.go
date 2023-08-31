@@ -37,28 +37,42 @@ func Open(option internal.Options, name string) *DB {
 	return &db
 }
 
-func (db *DB) Put(key, value string) error {
+func (db *DB) Put(key, value []byte) error {
 	if err := db.makeRoomForWrite(); err != nil {
 		return err
 	}
-	db.mem.Add(internal.KTypeValue, key, value)
+
+	db.mu.Lock()
+	seq := db.current.LastSequence
+	db.current.LastSequence++
+	db.mu.Unlock()
+
+	db.mem.Add(seq, internal.KTypeValue, key, value)
 	return nil
 }
 
-func (db *DB) Get(key string) (string, error) {
-	v, ok := db.mem.Get(key)
+func (db *DB) Get(key []byte) ([]byte, error) {
+	db.mu.Lock()
+	snapshot := db.current.LastSequence
+	mem := db.mem
+	imm := db.imm
+	current := db.current
+	db.mu.Unlock()
+
+	lookup_key := internal.NewLookupKey(key, snapshot)
+	v, ok := mem.Get(lookup_key)
 	if ok {
 		return v, nil
 	}
-	if db.imm != nil {
-		v, ok = db.imm.Get(key)
+	if imm != nil {
+		v, ok = imm.Get(lookup_key)
 		if ok {
 			return v, nil
 		}
 	}
 
-	value, err := db.current.Get([]byte(key))
-	return string(value), err
+	value, err := current.Get(lookup_key.ExtractInternalKey())
+	return value, err
 }
 
 func (db *DB) makeRoomForWrite() error {
@@ -104,12 +118,14 @@ func (db *DB) writeLevel0Table(imm memtable.MemTable, ver *version.Version) erro
 	iter := imm.Iterator()
 	iter.SeekToFirst()
 	if iter.Valid() {
-		meta.Smallest = iter.Key()
+		memkey := internal.MemTableKey(iter.Key())
+		meta.Smallest = memkey.ExtractInternalKey().ExtractUserKey()
 		for ; iter.Valid(); iter.Next() {
-			key := iter.Key()
-			value := iter.Value()
-			meta.Largest = key
-			builder.Add(string(key), string(value))
+			memkey = internal.MemTableKey(iter.Key())
+			internal_key := memkey.ExtractInternalKey()
+			value := memkey.ExtractValue()
+			meta.Largest = internal_key.ExtractUserKey()
+			builder.Add(internal_key, value)
 		}
 		builder.Finish()
 		meta.FileSize = builder.FileSize()

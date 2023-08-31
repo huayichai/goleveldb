@@ -17,22 +17,30 @@ func NewSkipListTable() *SkipListTable {
 	return &memtable
 }
 
-func (sk *SkipListTable) Add(valueType internal.ValueType, key, value string) {
-	internalKey := internal.EncodeInternalKVEntry([]byte(key), []byte(value))
-	sk.table.Insert(internalKey)
-	sk.memoryUsage += uint64(len(internalKey))
+func (sk *SkipListTable) Add(seq internal.SequenceNumber, valueType internal.ValueType, key, value []byte) {
+	// construct memtable key
+	memkey := internal.NewMemTableKey(seq, valueType, key, value)
+	// insert into skiplist
+	sk.table.Insert([]byte(memkey))
+	sk.memoryUsage += uint64(len(memkey))
 }
 
-func (sk *SkipListTable) Get(key string) (string, bool) {
-	lookup_key := []byte(key)
+func (sk *SkipListTable) Get(key internal.LookupKey) ([]byte, bool) {
 	iter := sk.table.NewIterator()
-	iter.Seek(lookup_key)
+	iter.Seek([]byte(key))
 	if iter.Valid() {
-		if internal.Compare(iter.Key(), lookup_key) == 0 {
-			return string(iter.Value()), true
+		memkey := internal.MemTableKey(iter.Key())
+		internal_key := memkey.ExtractInternalKey()
+		if internal.UserKeyCompare(internal_key.ExtractUserKey(), key.ExtractUserKey()) == 0 {
+			// deleted
+			if internal_key.ExtractValueType() == internal.KTypeDeletion {
+				return nil, false
+			}
+			// extract value
+			return memkey.ExtractValue(), true
 		}
 	}
-	return "", false
+	return nil, false
 }
 
 func (sk *SkipListTable) ApproximateMemoryUsage() uint64 {

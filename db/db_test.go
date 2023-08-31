@@ -19,19 +19,19 @@ func TestDB1(t *testing.T) {
 	db := Open(*option, path)
 
 	for i := 0; i < 100; i++ {
-		key := fmt.Sprintf("%3dtest", i)
-		value := fmt.Sprintf("value%3d", i)
-		db.Put(key, value)
+		key := fmt.Sprintf("%03dtest", i)
+		value := fmt.Sprintf("value%03d", i)
+		db.Put([]byte(key), []byte(value))
 	}
 
 	for i := 0; i < 100; i++ {
-		key := fmt.Sprintf("%3dtest", i)
-		value := fmt.Sprintf("value%3d", i)
-		if i == 5 {
-			i = 5
+		key := fmt.Sprintf("%03dtest", i)
+		value := fmt.Sprintf("value%03d", i)
+		v, err := db.Get([]byte(key))
+		if err != nil {
+			t.Fatalf("lookup: %s err. %s\n", key, err.Error())
 		}
-		v, _ := db.Get(key)
-		if value != v {
+		if value != string(v) {
 			t.Fatalf("Expect: %s, but get %s\n", key, v)
 		}
 	}
@@ -46,9 +46,9 @@ func TestDB_CloseRecover(t *testing.T) {
 	option.Write_buffer_size = 1024
 	db := Open(*option, path)
 	for i := 0; i < 100; i++ {
-		key := fmt.Sprintf("%3dtest", i)
-		value := fmt.Sprintf("value%3d", i)
-		db.Put(key, value)
+		key := fmt.Sprintf("%03dtest", i)
+		value := fmt.Sprintf("value%03d", i)
+		db.Put([]byte(key), []byte(value))
 	}
 	db.Close()
 	db = nil
@@ -57,13 +57,13 @@ func TestDB_CloseRecover(t *testing.T) {
 
 	db = Open(*option, path)
 	for i := 0; i < 100; i++ {
-		key := fmt.Sprintf("%3dtest", i)
-		value := fmt.Sprintf("value%3d", i)
+		key := fmt.Sprintf("%03dtest", i)
+		value := fmt.Sprintf("value%03d", i)
 		if i == 5 {
 			i = 5
 		}
-		v, _ := db.Get(key)
-		if value != v {
+		v, _ := db.Get([]byte(key))
+		if value != string(v) {
 			t.Fatalf("Expect: %s, but get %s\n", key, v)
 		}
 	}

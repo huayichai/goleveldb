@@ -1,8 +1,7 @@
 package sstable
 
 import (
-	"encoding/binary"
-
+	"github.com/huayichai/goleveldb/internal"
 	"github.com/huayichai/goleveldb/log"
 )
 
@@ -41,13 +40,13 @@ func OpenSSTable(file log.RandomAccessFile, size uint64) (*SSTable, error) {
 
 // Firstly, locate the block according to the index block,
 // and then search by sequential traversal.
-func (table *SSTable) Get(key []byte) ([]byte, error) {
+func (table *SSTable) Get(key internal.InternalKey) ([]byte, error) {
 	// search in index block
 	_, pos_bytes, err := table.indexBlock.Get(0, key)
 	if err != nil {
 		return nil, err
 	}
-	offset := binary.LittleEndian.Uint32(pos_bytes)
+	offset := internal.DecodeFixed32(pos_bytes)
 
 	// search in data block
 	_, v, err := table.dataBlock.Get(offset, key)

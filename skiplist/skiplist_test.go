@@ -11,34 +11,43 @@ func Test_SkipList1(t *testing.T) {
 	skiplist := New()
 
 	for i := 0; i < 100; i++ {
-		key := fmt.Sprintf("%3dtest", i)
-		value := fmt.Sprintf("value%3d", i)
-		i_kv := internal.EncodeInternalKVEntry([]byte(key), []byte(value))
-		skiplist.Insert(i_kv)
+		key := fmt.Sprintf("%03dtest", i)
+		value := fmt.Sprintf("value%03d", i)
+		memkey := internal.NewMemTableKey(internal.SequenceNumber(i), internal.KTypeValue, []byte(key), []byte(value))
+		skiplist.Insert([]byte(memkey))
 	}
 
 	iter := skiplist.NewIterator()
+	iter.SeekToFirst()
 	i := 0
 	for ; iter.Valid(); iter.Next() {
-		valid_key := []byte(fmt.Sprintf("%3dtest", i))
-		valid_value := []byte(fmt.Sprintf("value%3d", i))
-		k, v := iter.Key(), iter.Value()
-		if internal.Compare(valid_key, k) != 0 || internal.Compare(valid_value, v) != 0 {
+		valid_key := []byte(fmt.Sprintf("%03dtest", i))
+		valid_value := []byte(fmt.Sprintf("value%03d", i))
+		memkey := internal.MemTableKey(iter.Key())
+		k, v := memkey.ExtractInternalKey().ExtractUserKey(), memkey.ExtractValue()
+		if internal.UserKeyCompare(valid_key, k) != 0 || internal.UserKeyCompare(valid_value, v) != 0 {
 			t.Fatal("skiplist get failed")
 		}
+		i++
 	}
 }
 
 func Test_SkipList2(t *testing.T) {
 	skiplist := New()
 
-	skiplist.Insert(internal.EncodeInternalKVEntry([]byte("49test"), []byte("value49")))
+	memkey := internal.NewMemTableKey(internal.SequenceNumber(0), internal.KTypeValue, []byte("49test"), []byte("value49"))
+	skiplist.Insert([]byte(memkey))
 	iter := skiplist.NewIterator()
-	iter.Seek([]byte("0test"))
+
+	lookup_key := internal.NewLookupKey([]byte("0test"), 0)
+	iter.Seek([]byte(lookup_key))
 	if !iter.Valid() {
 		t.Fatal("")
 	}
-	if internal.Compare(iter.Value(), []byte("value49")) != 0 {
+
+	r := internal.MemTableKey(iter.Key())
+
+	if internal.UserKeyCompare(r.ExtractValue(), []byte("value49")) != 0 {
 		t.Fatal("")
 	}
 }
