@@ -67,3 +67,7 @@ func (lf *LinuxFile) Size() int64 {
 	fi, _ := lf.file.Stat()
 	return fi.Size()
 }
+
+func RemoveFile(path string) error {
+	return os.Remove(path)
+}

@@ -10,6 +10,7 @@ import (
 	"github.com/huayichai/goleveldb/memtable"
 	"github.com/huayichai/goleveldb/sstable"
 	"github.com/huayichai/goleveldb/version"
+	"github.com/huayichai/goleveldb/wal"
 )
 
 type DB struct {
@@ -20,6 +21,8 @@ type DB struct {
 	mem memtable.MemTable // Memtable
 	imm memtable.MemTable // Memtable being compacted
 
+	logWriter *wal.LogWriter
+
 	current *version.Version
 
 	mu   sync.Mutex
@@ -28,12 +31,21 @@ type DB struct {
 
 func Open(option internal.Options, name string) *DB {
 	var db DB
+	var err error
 	db.dbname = name
 	db.option = option
-	db.mem = memtable.NewMemTable()
-	db.imm = nil
-	db.cond = sync.NewCond(&db.mu)
+
+	// recover from last close
 	db.Recover()
+	if db.mem == nil {
+		if err = db.switchToNewMemTable(); err != nil {
+			panic("create log file fialed")
+		}
+
+	}
+
+	db.cond = sync.NewCond(&db.mu)
+
 	return &db
 }
 
@@ -47,6 +59,9 @@ func (db *DB) Put(key, value []byte) error {
 	db.current.LastSequence++
 	db.mu.Unlock()
 
+	if err := db.logWriter.AddRecord([]byte(internal.NewMemTableKey(seq, internal.KTypeValue, key, value))); err != nil {
+		panic("wal write failed")
+	}
 	db.mem.Add(seq, internal.KTypeValue, key, value)
 	return nil
 }
@@ -92,8 +107,7 @@ func (db *DB) makeRoomForWrite() error {
 			db.cond.Wait()
 		} else {
 			// Attempt to switch to a new memtable and trigger compaction of old
-			db.imm = db.mem
-			db.mem = memtable.NewMemTable()
+			db.switchToNewMemTable()
 			go db.backgroundCompaction()
 		}
 	}
@@ -187,5 +201,25 @@ func (db *DB) saveManifestFile() error {
 	file.Append(string(manifestContent))
 	file.Flush()
 	file.Close()
+	return nil
+}
+
+func (db *DB) switchToNewMemTable() error {
+	// switch mem to imm
+	db.imm = db.mem
+
+	// new write ahead log
+	new_log_number := db.current.NextFileNumber
+	db.current.NextFileNumber++
+	logPath := internal.LogFileName(db.dbname, new_log_number)
+	logFile, err := log.NewLinuxFile(logPath)
+	if err != nil {
+		return err
+	}
+	db.logWriter = wal.NewLogWriter(logFile)
+
+	// new memtable
+	db.mem = memtable.NewMemTable(logPath)
+
 	return nil
 }

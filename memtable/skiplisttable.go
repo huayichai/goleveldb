@@ -8,12 +8,14 @@ import (
 type SkipListTable struct {
 	table       *skiplist.SkipList
 	memoryUsage uint64
+	logPath     string
 }
 
-func NewSkipListTable() *SkipListTable {
+func NewSkipListTable(logPath string) *SkipListTable {
 	var memtable SkipListTable
 	memtable.table = skiplist.New()
 	memtable.memoryUsage = 0
+	memtable.logPath = logPath
 	return &memtable
 }
 
@@ -49,6 +51,10 @@ func (sk *SkipListTable) ApproximateMemoryUsage() uint64 {
 
 func (sk *SkipListTable) Iterator() internal.Iterator {
 	return sk.table.NewIterator()
+}
+
+func (sk *SkipListTable) GetLogPath() string {
+	return sk.logPath
 }
 
 var _ MemTable = (*SkipListTable)(nil)

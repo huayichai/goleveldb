@@ -9,8 +9,9 @@ type MemTable interface {
 	Get(key internal.LookupKey) ([]byte, bool)
 	ApproximateMemoryUsage() uint64
 	Iterator() internal.Iterator
+	GetLogPath() string
 }
 
-func NewMemTable() MemTable {
-	return NewSkipListTable()
+func NewMemTable(logPath string) MemTable {
+	return NewSkipListTable(logPath)
 }
