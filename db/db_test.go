@@ -59,9 +59,6 @@ func TestDB_CloseRecover(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		key := fmt.Sprintf("%03dtest", i)
 		value := fmt.Sprintf("value%03d", i)
-		if i == 5 {
-			i = 5
-		}
 		v, _ := db.Get([]byte(key))
 		if value != string(v) {
 			t.Fatalf("Expect: %s, but get %s\n", key, v)

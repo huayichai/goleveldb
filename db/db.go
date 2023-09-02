@@ -21,7 +21,8 @@ type DB struct {
 	mem memtable.MemTable // Memtable
 	imm memtable.MemTable // Memtable being compacted
 
-	logWriter *wal.LogWriter
+	currentLogFileNumber uint64
+	logWriter            *wal.LogWriter
 
 	current *version.Version
 
@@ -155,11 +156,10 @@ func (db *DB) Close() {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
-	// save mem, imm
+	// wait background compaction
 	for db.imm != nil {
 		db.cond.Wait()
 	}
-	db.writeLevel0Table(db.mem, db.current)
 
 	// save version
 	err := db.saveManifestFile()
@@ -169,6 +169,7 @@ func (db *DB) Close() {
 }
 
 func (db *DB) Recover() {
+	db.mem, db.imm = nil, nil
 	_, err := os.Stat(db.dbname)
 	// db not exist
 	if err != nil && os.IsNotExist(err) {
@@ -188,17 +189,23 @@ func (db *DB) Recover() {
 		if err != nil {
 			panic("Recover failed")
 		}
-		db.current.DecodeFrom(data)
+		db.currentLogFileNumber = internal.DecodeFixed64(data)
+		db.recoverMemTable()
+		db.current.DecodeFrom(data[8:])
 	}
 }
 
 func (db *DB) saveManifestFile() error {
-	manifestContent := db.current.EncodeTo()
 	file, err := log.NewLinuxFile(internal.ManifestFileName(db.dbname))
 	if err != nil {
 		return err
 	}
-	file.Append(string(manifestContent))
+
+	p := make([]byte, 8)
+	internal.EncodeFixed64(p, db.currentLogFileNumber)
+	manifestContent := db.current.EncodeTo()
+	p = append(p, manifestContent...)
+	file.Append(string(p))
 	file.Flush()
 	file.Close()
 	return nil
@@ -209,17 +216,38 @@ func (db *DB) switchToNewMemTable() error {
 	db.imm = db.mem
 
 	// new write ahead log
-	new_log_number := db.current.NextFileNumber
+	db.currentLogFileNumber = db.current.NextFileNumber
 	db.current.NextFileNumber++
-	logPath := internal.LogFileName(db.dbname, new_log_number)
-	logFile, err := log.NewLinuxFile(logPath)
+	LogPath := internal.LogFileName(db.dbname, db.currentLogFileNumber)
+	logFile, err := log.NewLinuxFile(LogPath)
 	if err != nil {
 		return err
 	}
 	db.logWriter = wal.NewLogWriter(logFile)
 
 	// new memtable
-	db.mem = memtable.NewMemTable(logPath)
+	db.mem = memtable.NewMemTable(LogPath)
 
+	return nil
+}
+
+func (db *DB) recoverMemTable() error {
+	logPath := internal.LogFileName(db.dbname, db.currentLogFileNumber)
+	file, err := log.NewLinuxFile(logPath)
+	if err != nil {
+		return err
+	}
+	db.mem = memtable.NewMemTable(logPath)
+	reader := wal.NewLogReader(file)
+	for {
+		record, err := reader.ReadRecord()
+		if err != nil {
+			break
+		}
+		memkey := internal.MemTableKey(record)
+		db.mem.Add(memkey.ExtractInternalKey().ExtractSequenceNumber(),
+			memkey.ExtractInternalKey().ExtractValueType(),
+			memkey.ExtractInternalKey().ExtractUserKey(), memkey.ExtractValue())
+	}
 	return nil
 }
