@@ -11,10 +11,10 @@ import (
 )
 
 type FileMetaData struct {
-	FileSize uint64 // File size in bytes
-	Number   uint64 // file number
-	Smallest []byte // Smallest internal key served by table
-	Largest  []byte // Largest internal key served by table
+	FileSize uint64               // File size in bytes
+	Number   uint64               // file number
+	Smallest internal.InternalKey // Smallest internal key served by table
+	Largest  internal.InternalKey // Largest internal key served by table
 }
 
 func (meta *FileMetaData) EncodeTo() []byte {
@@ -40,6 +40,8 @@ type Version struct {
 	NextFileNumber uint64
 	LastSequence   internal.SequenceNumber
 	Files          [internal.NumLevels][]*FileMetaData
+
+	compactPointer [internal.NumLevels]internal.InternalKey
 }
 
 func NewVersion(dbname string) *Version {
@@ -54,18 +56,38 @@ func (v *Version) NumLevelFiles(l uint32) uint32 {
 	return uint32(len(v.Files[l]))
 }
 
-func (v *Version) AddFile(level uint32, meta *FileMetaData) {
+func (v *Version) AddFile(level int, meta *FileMetaData) {
 	if level == 0 {
 		v.Files[level] = append(v.Files[level], meta)
 	} else {
+		numFiles := len(v.Files[level])
+		index := v.findFile(v.Files[level], meta.Smallest)
+		if index >= numFiles {
+			v.Files[level] = append(v.Files[level], meta)
+		} else {
+			var tmp []*FileMetaData
+			tmp = append(tmp, v.Files[level][:index]...)
+			tmp = append(tmp, meta)
+			v.Files[level] = append(tmp, v.Files[level][index:]...)
+		}
+	}
+}
 
+func (v *Version) DeleteFile(level int, meta *FileMetaData) {
+	numFiles := len(v.Files[level])
+	for i := 0; i < numFiles; i++ {
+		if v.Files[level][i].Number == meta.Number {
+			v.Files[level] = append(v.Files[level][:i], v.Files[level][i+1:]...)
+			break
+		}
 	}
 }
 
 func (v *Version) Get(internal_key internal.InternalKey) ([]byte, error) {
 	var filemetas []*FileMetaData
 	user_key := internal_key.ExtractUserKey()
-	for level := 0; level < 1; level++ {
+	for level := 0; level < int(internal.NumLevels); level++ {
+		filemetas = []*FileMetaData{}
 		numFiles := len(v.Files[level])
 		if numFiles == 0 {
 			continue
@@ -73,7 +95,7 @@ func (v *Version) Get(internal_key internal.InternalKey) ([]byte, error) {
 		if level == 0 {
 			for idx := 0; idx < numFiles; idx++ {
 				meta := v.Files[level][idx]
-				if internal.UserKeyCompare(meta.Smallest, user_key) <= 0 && internal.Compare(meta.Largest, user_key) >= 0 {
+				if internal.UserKeyCompare(meta.Smallest.ExtractUserKey(), user_key) <= 0 && internal.Compare(meta.Largest.ExtractUserKey(), user_key) >= 0 {
 					filemetas = append(filemetas, meta)
 				}
 			}
@@ -84,7 +106,16 @@ func (v *Version) Get(internal_key internal.InternalKey) ([]byte, error) {
 				return filemetas[i].Number > filemetas[j].Number
 			})
 		} else {
-			// not implement!
+			index := v.findFile(v.Files[level], user_key)
+			if index >= numFiles {
+				filemetas = nil
+			} else {
+				if internal.UserKeyCompare(user_key, v.Files[level][index].Smallest.ExtractUserKey()) < 0 {
+					filemetas = nil
+				} else {
+					filemetas = append(filemetas, v.Files[level][index])
+				}
+			}
 		}
 		numFiles = len(filemetas)
 		for idx := 0; idx < numFiles; idx++ {
@@ -140,4 +171,23 @@ func (v *Version) DecodeFrom(data []byte) {
 		}
 		v.Files[level] = metas
 	}
+}
+
+func (v *Version) findFile(metas []*FileMetaData, user_key []byte) int {
+	left := 0
+	right := len(metas)
+	for left < right {
+		mid := (left + right) / 2
+		f := metas[mid]
+		if internal.UserKeyCompare(f.Largest.ExtractUserKey(), user_key) < 0 {
+			// Key at "mid.largest" is < "target".  Therefore all
+			// files at or before "mid" are uninteresting.
+			left = mid + 1
+		} else {
+			// Key at "mid.largest" is >= "target".  Therefore all files
+			// after "mid" are uninteresting.
+			right = mid
+		}
+	}
+	return right
 }

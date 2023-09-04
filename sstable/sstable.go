@@ -52,3 +52,47 @@ func (table *SSTable) Get(key internal.InternalKey) ([]byte, error) {
 	_, v, err := table.dataBlock.Get(offset, key)
 	return v, err
 }
+
+type SSTableIterator struct {
+	dataBlock *Block
+	data_iter *BlockIterator
+}
+
+func NewSSTableIterator(table *SSTable) *SSTableIterator {
+	var iter SSTableIterator
+	iter.dataBlock = table.dataBlock
+	iter.data_iter = NewBlockIterator(table.dataBlock)
+	return &iter
+}
+
+func (iter *SSTableIterator) Valid() bool {
+	return iter.data_iter.Valid()
+}
+
+func (iter *SSTableIterator) SeekToFirst() {
+	iter.data_iter.SeekToFirst()
+}
+
+func (iter *SSTableIterator) SeekToLast() {
+	iter.data_iter.SeekToLast()
+}
+
+func (iter *SSTableIterator) Seek(target interface{}) {
+	iter.data_iter.Seek(target)
+}
+
+func (iter *SSTableIterator) Next() {
+	iter.data_iter.Next()
+}
+
+func (iter *SSTableIterator) Prev() {
+	iter.data_iter.Prev()
+}
+
+func (iter *SSTableIterator) Key() []byte {
+	return iter.data_iter.Key()
+}
+
+func (iter *SSTableIterator) Value() []byte {
+	return iter.data_iter.Value()
+}

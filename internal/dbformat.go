@@ -5,11 +5,15 @@ import "bytes"
 const (
 	NumLevels uint32 = 7
 
+	L0_CompactionTrigger uint32 = 4
+
 	// Level-0 compaction is started when we hit this many files.
 	L0_SlowdownWritesTrigger uint32 = 8
 
 	// Maximum number of level-0 files.  We stop writes at this point.
 	L0_StopWritesTrigger uint32 = 12
+
+	MaxFileSize uint32 = 2 << 20
 )
 
 type ValueType uint8

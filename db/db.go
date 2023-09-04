@@ -26,8 +26,10 @@ type DB struct {
 
 	current *version.Version
 
-	mu   sync.Mutex
-	cond *sync.Cond
+	backgroundCompactionScheduled bool
+
+	mu                           sync.Mutex
+	backgroundWorkFinishedSignal *sync.Cond
 }
 
 func Open(option internal.Options, name string) *DB {
@@ -35,6 +37,7 @@ func Open(option internal.Options, name string) *DB {
 	var err error
 	db.dbname = name
 	db.option = option
+	db.backgroundCompactionScheduled = false
 
 	// recover from last close
 	db.Recover()
@@ -45,7 +48,7 @@ func Open(option internal.Options, name string) *DB {
 
 	}
 
-	db.cond = sync.NewCond(&db.mu)
+	db.backgroundWorkFinishedSignal = sync.NewCond(&db.mu)
 
 	return &db
 }
@@ -55,10 +58,10 @@ func (db *DB) Put(key, value []byte) error {
 		return err
 	}
 
-	db.mu.Lock()
+	// db.mu.Lock()
 	seq := db.current.LastSequence
 	db.current.LastSequence++
-	db.mu.Unlock()
+	// db.mu.Unlock()
 
 	if err := db.logWriter.AddRecord([]byte(internal.NewMemTableKey(seq, internal.KTypeValue, key, value))); err != nil {
 		panic("wal write failed")
@@ -68,12 +71,12 @@ func (db *DB) Put(key, value []byte) error {
 }
 
 func (db *DB) Get(key []byte) ([]byte, error) {
-	db.mu.Lock()
+	// db.mu.Lock()
 	snapshot := db.current.LastSequence
 	mem := db.mem
 	imm := db.imm
 	current := db.current
-	db.mu.Unlock()
+	// db.mu.Unlock()
 
 	lookup_key := internal.NewLookupKey(key, snapshot)
 	v, ok := mem.Get(lookup_key)
@@ -92,24 +95,25 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 }
 
 func (db *DB) makeRoomForWrite() error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
+	// db.mu.Lock()
+	// defer db.mu.Unlock()
 	for {
 		if db.current.NumLevelFiles(0) >= internal.L0_SlowdownWritesTrigger {
-			db.mu.Unlock()
+			// db.mu.Unlock()
 			time.Sleep(time.Duration(1) * time.Second)
-			db.mu.Lock()
+			db.maybeScheduleCompaction()
+			// db.mu.Lock()
 		} else if db.mem.ApproximateMemoryUsage() < uint64(db.option.Write_buffer_size) {
 			// There is room in current memtable
 			return nil
 		} else if db.imm != nil {
 			// We have filled up the current memtable, but the previous
 			// one is still being compacted, so we wait.
-			db.cond.Wait()
+			db.backgroundWorkFinishedSignal.Wait()
 		} else {
 			// Attempt to switch to a new memtable and trigger compaction of old
 			db.switchToNewMemTable()
-			go db.backgroundCompaction()
+			db.maybeScheduleCompaction()
 		}
 	}
 }
@@ -134,12 +138,12 @@ func (db *DB) writeLevel0Table(imm memtable.MemTable, ver *version.Version) erro
 	iter.SeekToFirst()
 	if iter.Valid() {
 		memkey := internal.MemTableKey(iter.Key())
-		meta.Smallest = memkey.ExtractInternalKey().ExtractUserKey()
+		meta.Smallest = memkey.ExtractInternalKey()
 		for ; iter.Valid(); iter.Next() {
 			memkey = internal.MemTableKey(iter.Key())
 			internal_key := memkey.ExtractInternalKey()
 			value := memkey.ExtractValue()
-			meta.Largest = internal_key.ExtractUserKey()
+			meta.Largest = internal_key
 			builder.Add(internal_key, value)
 		}
 		builder.Finish()
@@ -153,12 +157,12 @@ func (db *DB) writeLevel0Table(imm memtable.MemTable, ver *version.Version) erro
 }
 
 func (db *DB) Close() {
-	db.mu.Lock()
-	defer db.mu.Unlock()
+	// db.mu.Lock()
+	// defer db.mu.Unlock()
 
 	// wait background compaction
 	for db.imm != nil {
-		db.cond.Wait()
+		db.backgroundWorkFinishedSignal.Wait()
 	}
 
 	// save version
@@ -249,5 +253,6 @@ func (db *DB) recoverMemTable() error {
 			memkey.ExtractInternalKey().ExtractValueType(),
 			memkey.ExtractInternalKey().ExtractUserKey(), memkey.ExtractValue())
 	}
+	db.logWriter = wal.NewLogWriter(file)
 	return nil
 }
