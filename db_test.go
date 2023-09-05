@@ -14,7 +14,7 @@ func TestDB1(t *testing.T) {
 	option.BlockSize = 1024
 	option.Write_buffer_size = 1024 * 64
 
-	db := Open(*option, path)
+	db, _ := Open(*option, path)
 
 	for i := 0; i < 10000; i++ {
 		key := fmt.Sprintf("%06dtest", i)
@@ -44,7 +44,7 @@ func TestDB_Recover(t *testing.T) {
 	option := NewOptions()
 	option.BlockSize = 1024
 	option.Write_buffer_size = 1024 * 64
-	db := Open(*option, path)
+	db, _ := Open(*option, path)
 	for i := 0; i < 5000; i++ {
 		key := fmt.Sprintf("%06dtest", i)
 		value := fmt.Sprintf("value%06d", i)
@@ -55,7 +55,7 @@ func TestDB_Recover(t *testing.T) {
 
 	time.Sleep(time.Millisecond * time.Duration(100))
 
-	db = Open(*option, path)
+	db, _ = Open(*option, path)
 	for i := 5000; i < 10000; i++ {
 		key := fmt.Sprintf("%06dtest", i)
 		value := fmt.Sprintf("value%06d", i)

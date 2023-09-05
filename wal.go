@@ -1,7 +1,5 @@
 package goleveldb
 
-import "fmt"
-
 type recordType uint8
 
 const (
@@ -14,8 +12,6 @@ const (
 )
 
 const kBlockSize uint32 = 32 * 1024
-
-// const kBlockSize uint32 = 32
 
 // Header is checksum (4 bytes), length (2 bytes), type (1 byte).
 const kHeaderSize uint32 = 4 + 2 + 1
@@ -48,7 +44,7 @@ func (reader *walReader) readPhysicalRecord() ([]byte, error) {
 			return nil, err
 		}
 		if len(header) != 7 {
-			return nil, fmt.Errorf("%s", "Incomplete record")
+			return nil, ErrByteCoding
 		}
 		a := uint32(header[4]) & 0xff
 		b := uint32(header[5]) & 0xff
@@ -151,7 +147,7 @@ func (writer *walWriter) emitPhysicalRecord(t recordType, ptr []byte, length uin
 	if err != nil {
 		return err
 	}
-	writer.dest.Flush()
+	writer.dest.Sync()
 	writer.blockOffset += (kHeaderSize + length)
 	return nil
 }

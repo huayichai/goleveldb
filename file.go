@@ -7,7 +7,6 @@ import (
 type WritableFile interface {
 	Append(data string) error
 	Close()
-	Flush()
 	Sync()
 }
 
@@ -39,10 +38,6 @@ func (lf *LinuxFile) Append(data string) error {
 
 func (lf *LinuxFile) Close() {
 	lf.file.Close()
-}
-
-func (lf *LinuxFile) Flush() {
-
 }
 
 func (lf *LinuxFile) Sync() {

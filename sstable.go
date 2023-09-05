@@ -2,7 +2,6 @@ package goleveldb
 
 import (
 	"encoding/binary"
-	"fmt"
 )
 
 // Decode SSTable Entry from [offset:]byte
@@ -79,7 +78,7 @@ func (builder *tableBuilder) flush() {
 	builder.pendingHandle = builder.writeblock(&builder.dataBlockBuilder)
 	if builder.status == nil {
 		builder.pendingIndexEntry = true
-		builder.file.Flush()
+		builder.file.Sync()
 	}
 }
 
@@ -210,7 +209,7 @@ func (b *block) get(offset uint32, key InternalKey) ([]byte, []byte, error) {
 		}
 		cur_offset += n
 	}
-	return nil, nil, fmt.Errorf("%s", "Not Found")
+	return nil, nil, ErrKeyNotFound
 }
 
 type blockIterator struct {

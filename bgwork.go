@@ -18,7 +18,9 @@ func (db *DB) backgroundCall() {
 
 func (db *DB) backgroundCompaction() {
 	if db.imm != nil {
-		db.compactMemTable()
+		if err := db.compactMemTable(); err != nil {
+			panic(err.Error())
+		}
 		return
 	}
 
@@ -29,23 +31,30 @@ func (db *DB) backgroundCompaction() {
 		db.current.deleteFile(c.level, c.inputs[0][0])
 		db.current.addFile(c.level+1, c.inputs[0][0])
 	} else {
-		db.doCompaction(c)
+		if err := db.doCompaction(c); err != nil {
+			panic(err.Error())
+		}
 	}
 }
 
-func (db *DB) compactMemTable() {
+func (db *DB) compactMemTable() error {
 	if err := db.writeLevel0Table(db.imm, db.current); err != nil {
-		panic("writeLevel0Table failed")
+		return err
 	}
-	if err := RemoveFile(db.imm.getLogPath()); err != nil {
-		panic("remove log file failed")
-	}
+	wal_path := db.imm.getLogPath()
 	db.imm = nil
+	if err := RemoveFile(wal_path); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (db *DB) doCompaction(c *compaction) {
+func (db *DB) doCompaction(c *compaction) error {
 	var list []*fileMetaData
-	iter := db.makeInputIterator(c)
+	iter, err := db.makeInputIterator(c)
+	if err != nil {
+		return err
+	}
 	var prev_user_key []byte = nil
 	var current_user_key []byte = nil
 
@@ -55,7 +64,7 @@ func (db *DB) doCompaction(c *compaction) {
 		db.current.nextFileNumber++
 		file, err := NewLinuxFile(sstableFileName(db.dbname, meta.number))
 		if err != nil {
-			panic(err.Error())
+			return err
 		}
 		builder := newTableBuilder(&db.option, file)
 
@@ -68,7 +77,7 @@ func (db *DB) doCompaction(c *compaction) {
 				if res == 0 {
 					continue
 				} else if res > 0 {
-					panic("internal key unsorted")
+					return ErrInvalidKey
 				}
 			}
 			prev_user_key = current_user_key
@@ -92,22 +101,23 @@ func (db *DB) doCompaction(c *compaction) {
 	for i := 0; i < len(list); i++ {
 		db.current.addFile(c.level+1, list[i])
 	}
+	return nil
 }
 
-func (db *DB) makeInputIterator(c *compaction) *mergeIterator {
+func (db *DB) makeInputIterator(c *compaction) (*mergeIterator, error) {
 	list := make([]*sstableIterator, 0)
 	for i := 0; i < 2; i++ {
 		for j := 0; j < len(c.inputs[i]); j++ {
 			file, err := NewLinuxFile(sstableFileName(db.dbname, c.inputs[i][j].number))
 			if err != nil {
-				panic(err.Error())
+				return nil, err
 			}
 			table, err := openSSTable(file, uint64(file.Size()))
 			if err != nil {
-				panic(err.Error())
+				return nil, err
 			}
 			list = append(list, newSSTableIterator(table))
 		}
 	}
-	return newMergeIterator(list)
+	return newMergeIterator(list), nil
 }

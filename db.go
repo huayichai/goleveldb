@@ -25,7 +25,7 @@ type DB struct {
 	backgroundWorkFinishedSignal *sync.Cond
 }
 
-func Open(option Options, name string) *DB {
+func Open(option Options, name string) (*DB, error) {
 	var db DB
 	var err error
 	db.dbname = name
@@ -33,16 +33,19 @@ func Open(option Options, name string) *DB {
 	db.backgroundCompactionScheduled = false
 
 	// recover from last close
-	db.Recover()
+	if err = db.Recover(); err != nil {
+		return nil, err
+	}
+
 	if db.mem == nil {
 		if err = db.switchToNewMemTable(); err != nil {
-			panic("create log file fialed")
+			return nil, err
 		}
 	}
 
 	db.backgroundWorkFinishedSignal = sync.NewCond(&db.mu)
 
-	return &db
+	return &db, nil
 }
 
 func (db *DB) Put(key, value []byte) error {
@@ -54,7 +57,7 @@ func (db *DB) Put(key, value []byte) error {
 	db.current.lastSequence++
 
 	if err := db.logWriter.addRecord([]byte(NewKVEntry(seq, KTypeValue, key, value))); err != nil {
-		panic("wal write failed")
+		return err
 	}
 	db.mem.add(seq, KTypeValue, key, value)
 	return nil
@@ -140,7 +143,7 @@ func (db *DB) writeLevel0Table(imm *memTable, ver *version) error {
 	return nil
 }
 
-func (db *DB) Close() {
+func (db *DB) Close() error {
 	// wait background compaction
 	for db.imm != nil {
 		db.backgroundWorkFinishedSignal.Wait()
@@ -149,35 +152,36 @@ func (db *DB) Close() {
 	// save version
 	err := db.saveManifestFile()
 	if err != nil {
-		panic("SaveManifestFile failed")
+		return err
 	}
+	return nil
 }
 
-func (db *DB) Recover() {
+func (db *DB) Recover() error {
 	db.mem, db.imm = nil, nil
 	_, err := os.Stat(db.dbname)
 	// db not exist
 	if err != nil && os.IsNotExist(err) {
-		err = os.MkdirAll(db.dbname, 0755)
-		if err != nil {
-			panic("Create db fialed")
+		if err = os.MkdirAll(db.dbname, 0755); err != nil {
+			return err
 		}
 		db.current = newVersion(db.dbname)
-		return
+		return nil
 	} else { // recover from last close
 		db.current = newVersion(db.dbname)
 		file, err := NewLinuxFile(manifestFileName(db.dbname))
 		if err != nil {
-			panic("Recover failed")
+			return err
 		}
 		data, err := file.Read(0, uint32(file.Size()))
 		if err != nil {
-			panic("Recover failed")
+			return err
 		}
 		db.currentLogFileNumber = DecodeFixed64(data)
 		db.recoverMemTable()
 		db.current.decodeFrom(data[8:])
 	}
+	return nil
 }
 
 func (db *DB) saveManifestFile() error {
@@ -191,7 +195,7 @@ func (db *DB) saveManifestFile() error {
 	manifestContent := db.current.encodeTo()
 	p = append(p, manifestContent...)
 	file.Append(string(p))
-	file.Flush()
+	file.Sync()
 	file.Close()
 	return nil
 }

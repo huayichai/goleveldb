@@ -2,7 +2,6 @@ package goleveldb
 
 import (
 	"encoding/binary"
-	"fmt"
 	"sort"
 )
 
@@ -131,7 +130,7 @@ func (v *version) get(internal_key InternalKey) ([]byte, error) {
 			return value, nil
 		}
 	}
-	return nil, fmt.Errorf("%s", "Not Found")
+	return nil, ErrKeyNotFound
 }
 
 func (v *version) encodeTo() []byte {
