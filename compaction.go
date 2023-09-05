@@ -1,6 +1,4 @@
-package version
-
-import "github.com/huayichai/goleveldb/internal"
+package goleveldb
 
 type Compaction struct {
 	level  int
@@ -31,7 +29,7 @@ func (v *Version) PickCompaction() *Compaction {
 	// Pick the first file that comes after compact_pointer_[level]
 	for i := 0; i < len(v.Files[c.level]); i++ {
 		f := v.Files[c.level][i]
-		if v.compactPointer[c.level] == nil || internal.InternalKeyCompare(f.Largest, v.compactPointer[c.level]) > 0 {
+		if v.compactPointer[c.level] == nil || InternalKeyCompare(f.Largest, v.compactPointer[c.level]) > 0 {
 			c.inputs[0] = append(c.inputs[0], f)
 			break
 		}
@@ -54,7 +52,7 @@ func (v *Version) PickCompaction() *Compaction {
 func (v *Version) pickCompactionLevel() (int, float64) {
 	best_level := -1
 	best_score := -1.0
-	for level := 0; level < int(internal.NumLevels-1); level++ {
+	for level := 0; level < int(NumLevels-1); level++ {
 		var score float64
 		if level == 0 {
 			// We treat level-0 specially by bounding the number of files
@@ -68,7 +66,7 @@ func (v *Version) pickCompactionLevel() (int, float64) {
 			// file size is small (perhaps because of a small write-buffer
 			// setting, or very high compression ratios, or lots of
 			// overwrites/deletions).
-			score = float64(len(v.Files[level])) / float64(internal.L0_CompactionTrigger)
+			score = float64(len(v.Files[level])) / float64(L0_CompactionTrigger)
 		} else {
 			score = float64(totalFileSize(v.Files[level])) / maxBytesForLevel(level)
 		}
@@ -82,17 +80,17 @@ func (v *Version) pickCompactionLevel() (int, float64) {
 
 // Stores the minimal range that covers all entries in inputs in
 // @return smallest, largest.
-func (v *Version) getRange(metas []*FileMetaData) (internal.InternalKey, internal.InternalKey) {
-	var smallest, largest internal.InternalKey
+func (v *Version) getRange(metas []*FileMetaData) (InternalKey, InternalKey) {
+	var smallest, largest InternalKey
 	for i := 0; i < len(metas); i++ {
 		if i == 0 {
 			smallest = metas[i].Smallest
 			largest = metas[i].Largest
 		} else {
-			if internal.InternalKeyCompare(metas[i].Smallest, smallest) < 0 {
+			if InternalKeyCompare(metas[i].Smallest, smallest) < 0 {
 				smallest = metas[i].Smallest
 			}
-			if internal.InternalKeyCompare(metas[i].Largest, largest) > 0 {
+			if InternalKeyCompare(metas[i].Largest, largest) > 0 {
 				largest = metas[i].Largest
 			}
 		}
@@ -101,27 +99,27 @@ func (v *Version) getRange(metas []*FileMetaData) (internal.InternalKey, interna
 }
 
 // Store in "outputs" all files in "level" that overlap [begin,end]
-func (v *Version) getOverlappingInputs(level int, begin, end internal.InternalKey) []*FileMetaData {
+func (v *Version) getOverlappingInputs(level int, begin, end InternalKey) []*FileMetaData {
 	user_begin, user_end := begin.ExtractUserKey(), end.ExtractUserKey()
 	outputs := make([]*FileMetaData, 0)
 	for i := 0; i < len(v.Files[level]); i++ {
 		f := v.Files[level][i]
 		file_start := f.Smallest.ExtractUserKey()
 		file_limit := f.Largest.ExtractUserKey()
-		if internal.UserKeyCompare(file_limit, user_begin) < 0 {
+		if UserKeyCompare(file_limit, user_begin) < 0 {
 			// "f" is completely before specified range; skip it
-		} else if internal.UserKeyCompare(file_start, user_end) > 0 {
+		} else if UserKeyCompare(file_start, user_end) > 0 {
 			// "f" is completely after specified range; skip it
 		} else {
 			outputs = append(outputs, f)
 			if level == 0 {
 				// Level-0 files may overlap each other.  So check if the newly
 				// added file has expanded the range.  If so, restart search.
-				if internal.UserKeyCompare(file_start, user_begin) < 0 {
+				if UserKeyCompare(file_start, user_begin) < 0 {
 					user_begin = file_start
 					outputs = outputs[0:0]
 					i = 0
-				} else if internal.UserKeyCompare(file_limit, user_end) > 0 {
+				} else if UserKeyCompare(file_limit, user_end) > 0 {
 					user_end = file_limit
 					outputs = outputs[0:0]
 					i = 0

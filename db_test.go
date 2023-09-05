@@ -1,20 +1,18 @@
-package db
+package goleveldb
 
 import (
 	"fmt"
 	"os"
 	"testing"
 	"time"
-
-	"github.com/huayichai/goleveldb/internal"
 )
 
 func TestDB1(t *testing.T) {
 	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/mydb"
 	os.RemoveAll(path)
-	option := internal.NewOptions()
+	option := NewOptions()
 	option.BlockSize = 1024
-	option.Write_buffer_size = 1024 * 16
+	option.Write_buffer_size = 1024 * 64
 
 	db := Open(*option, path)
 
@@ -43,9 +41,9 @@ func TestDB1(t *testing.T) {
 func TestDB_Recover(t *testing.T) {
 	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/RecoverDB"
 	os.RemoveAll(path)
-	option := internal.NewOptions()
+	option := NewOptions()
 	option.BlockSize = 1024
-	option.Write_buffer_size = 1024 * 32
+	option.Write_buffer_size = 1024 * 64
 	db := Open(*option, path)
 	for i := 0; i < 5000; i++ {
 		key := fmt.Sprintf("%06dtest", i)

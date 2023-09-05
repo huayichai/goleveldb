@@ -1,4 +1,4 @@
-package internal
+package goleveldb
 
 type Options struct {
 	// If true, the database will be created if it is missing.

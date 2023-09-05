@@ -1,17 +1,15 @@
-package wal
+package goleveldb
 
 import (
 	"fmt"
-
-	"github.com/huayichai/goleveldb/log"
 )
 
 type LogReader struct {
-	file             log.RandomAccessFile
+	file             RandomAccessFile
 	lastRecordOffset uint64
 }
 
-func NewLogReader(file log.RandomAccessFile) *LogReader {
+func NewLogReader(file RandomAccessFile) *LogReader {
 	return &LogReader{
 		file:             file,
 		lastRecordOffset: 0,

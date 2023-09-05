@@ -1,4 +1,4 @@
-package internal
+package goleveldb
 
 import (
 	"bytes"

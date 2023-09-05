@@ -1,16 +1,11 @@
-package version
-
-import (
-	"github.com/huayichai/goleveldb/internal"
-	"github.com/huayichai/goleveldb/sstable"
-)
+package goleveldb
 
 type MergeIterator struct {
-	list    []*sstable.SSTableIterator
-	current *sstable.SSTableIterator
+	list    []*SSTableIterator
+	current *SSTableIterator
 }
 
-func NewMergeIterator(list []*sstable.SSTableIterator) *MergeIterator {
+func NewMergeIterator(list []*SSTableIterator) *MergeIterator {
 	var iter MergeIterator
 	iter.list = list
 	return &iter
@@ -20,7 +15,7 @@ func (iter *MergeIterator) Valid() bool {
 	return iter.current != nil && iter.current.Valid()
 }
 
-func (iter *MergeIterator) InternalKey() internal.InternalKey {
+func (iter *MergeIterator) InternalKey() InternalKey {
 	return iter.current.Key()
 }
 
@@ -43,12 +38,12 @@ func (iter *MergeIterator) SeekToFirst() {
 }
 
 func (iter *MergeIterator) findSmallest() {
-	var smallest *sstable.SSTableIterator = nil
+	var smallest *SSTableIterator = nil
 	for i := 0; i < len(iter.list); i++ {
 		if iter.list[i].Valid() {
 			if smallest == nil {
 				smallest = iter.list[i]
-			} else if internal.InternalKeyCompare(smallest.Key(), iter.list[i].Key()) > 0 {
+			} else if InternalKeyCompare(smallest.Key(), iter.list[i].Key()) > 0 {
 				smallest = iter.list[i]
 			}
 		}

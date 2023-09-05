@@ -1,4 +1,4 @@
-package db
+package goleveldb
 
 type Code uint8
 

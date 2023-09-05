@@ -1,11 +1,4 @@
-package db
-
-import (
-	"github.com/huayichai/goleveldb/internal"
-	"github.com/huayichai/goleveldb/log"
-	"github.com/huayichai/goleveldb/sstable"
-	"github.com/huayichai/goleveldb/version"
-)
+package goleveldb
 
 func (db *DB) maybeScheduleCompaction() {
 	if db.backgroundCompactionScheduled {
@@ -44,34 +37,34 @@ func (db *DB) compactMemTable() {
 	if err := db.writeLevel0Table(db.imm, db.current); err != nil {
 		panic("writeLevel0Table failed")
 	}
-	if err := log.RemoveFile(db.imm.GetLogPath()); err != nil {
+	if err := RemoveFile(db.imm.GetLogPath()); err != nil {
 		panic("remove log file failed")
 	}
 	db.imm = nil
 }
 
-func (db *DB) doCompaction(c *version.Compaction) {
-	var list []*version.FileMetaData
+func (db *DB) doCompaction(c *Compaction) {
+	var list []*FileMetaData
 	iter := db.makeInputIterator(c)
 	var prev_user_key []byte = nil
 	var current_user_key []byte = nil
 
 	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
-		var meta version.FileMetaData
+		var meta FileMetaData
 		meta.Number = db.current.NextFileNumber
 		db.current.NextFileNumber++
-		file, err := log.NewLinuxFile(internal.SSTableFileName(db.dbname, meta.Number))
+		file, err := NewLinuxFile(SSTableFileName(db.dbname, meta.Number))
 		if err != nil {
 			panic(err.Error())
 		}
-		builder := sstable.NewTableBuilder(&db.option, file)
+		builder := NewTableBuilder(&db.option, file)
 
 		meta.Smallest = iter.InternalKey()
 		for ; iter.Valid(); iter.Next() {
 			internal_key := iter.InternalKey()
 			current_user_key = internal_key.ExtractUserKey()
 			if prev_user_key != nil {
-				res := internal.UserKeyCompare(prev_user_key, current_user_key)
+				res := UserKeyCompare(prev_user_key, current_user_key)
 				if res == 0 {
 					continue
 				} else if res > 0 {
@@ -81,7 +74,7 @@ func (db *DB) doCompaction(c *version.Compaction) {
 			prev_user_key = current_user_key
 			meta.Largest = current_user_key
 			builder.Add(internal_key, iter.Value())
-			if builder.FileSize() > uint64(internal.MaxFileSize) {
+			if builder.FileSize() > uint64(MaxFileSize) {
 				break
 			}
 		}
@@ -102,21 +95,21 @@ func (db *DB) doCompaction(c *version.Compaction) {
 	}
 }
 
-func (db *DB) makeInputIterator(c *version.Compaction) *version.MergeIterator {
-	list := make([]*sstable.SSTableIterator, 0)
+func (db *DB) makeInputIterator(c *Compaction) *MergeIterator {
+	list := make([]*SSTableIterator, 0)
 	inputs := c.Input()
 	for i := 0; i < 2; i++ {
 		for j := 0; j < len(inputs[i]); j++ {
-			file, err := log.NewLinuxFile(internal.SSTableFileName(db.dbname, inputs[i][j].Number))
+			file, err := NewLinuxFile(SSTableFileName(db.dbname, inputs[i][j].Number))
 			if err != nil {
 				panic(err.Error())
 			}
-			table, err := sstable.OpenSSTable(file, uint64(file.Size()))
+			table, err := OpenSSTable(file, uint64(file.Size()))
 			if err != nil {
 				panic(err.Error())
 			}
-			list = append(list, sstable.NewSSTableIterator(table))
+			list = append(list, NewSSTableIterator(table))
 		}
 	}
-	return version.NewMergeIterator(list)
+	return NewMergeIterator(list)
 }

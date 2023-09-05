@@ -1,6 +1,8 @@
-package internal
+package goleveldb
 
-import "bytes"
+import (
+	"bytes"
+)
 
 const (
 	NumLevels uint32 = 7

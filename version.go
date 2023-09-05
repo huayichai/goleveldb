@@ -1,28 +1,24 @@
-package version
+package goleveldb
 
 import (
 	"encoding/binary"
 	"fmt"
 	"sort"
-
-	"github.com/huayichai/goleveldb/internal"
-	"github.com/huayichai/goleveldb/log"
-	"github.com/huayichai/goleveldb/sstable"
 )
 
 type FileMetaData struct {
-	FileSize uint64               // File size in bytes
-	Number   uint64               // file number
-	Smallest internal.InternalKey // Smallest internal key served by table
-	Largest  internal.InternalKey // Largest internal key served by table
+	FileSize uint64      // File size in bytes
+	Number   uint64      // file number
+	Smallest InternalKey // Smallest internal key served by table
+	Largest  InternalKey // Largest internal key served by table
 }
 
 func (meta *FileMetaData) EncodeTo() []byte {
 	buf := make([]byte, 16)
 	binary.LittleEndian.PutUint64(buf[0:8], meta.FileSize)
 	binary.LittleEndian.PutUint64(buf[8:16], meta.Number)
-	buf = append(buf, internal.PutLengthPrefixedSlice(meta.Smallest)...)
-	buf = append(buf, internal.PutLengthPrefixedSlice(meta.Largest)...)
+	buf = append(buf, PutLengthPrefixedSlice(meta.Smallest)...)
+	buf = append(buf, PutLengthPrefixedSlice(meta.Largest)...)
 	return buf
 }
 
@@ -30,18 +26,18 @@ func (meta *FileMetaData) DecodeFrom(data []byte) uint32 {
 	meta.FileSize = binary.LittleEndian.Uint64(data[0:8])
 	meta.Number = binary.LittleEndian.Uint64(data[8:16])
 	var n1, n2 uint32
-	meta.Smallest, n1 = internal.GetLengthPrefixedSlice(data[16:])
-	meta.Largest, n2 = internal.GetLengthPrefixedSlice(data[16+n1:])
+	meta.Smallest, n1 = GetLengthPrefixedSlice(data[16:])
+	meta.Largest, n2 = GetLengthPrefixedSlice(data[16+n1:])
 	return 16 + n1 + n2
 }
 
 type Version struct {
 	dbname         string
 	NextFileNumber uint64
-	LastSequence   internal.SequenceNumber
-	Files          [internal.NumLevels][]*FileMetaData
+	LastSequence   SequenceNumber
+	Files          [NumLevels][]*FileMetaData
 
-	compactPointer [internal.NumLevels]internal.InternalKey
+	compactPointer [NumLevels]InternalKey
 }
 
 func NewVersion(dbname string) *Version {
@@ -83,10 +79,10 @@ func (v *Version) DeleteFile(level int, meta *FileMetaData) {
 	}
 }
 
-func (v *Version) Get(internal_key internal.InternalKey) ([]byte, error) {
+func (v *Version) Get(internal_key InternalKey) ([]byte, error) {
 	var filemetas []*FileMetaData
 	user_key := internal_key.ExtractUserKey()
-	for level := 0; level < int(internal.NumLevels); level++ {
+	for level := 0; level < int(NumLevels); level++ {
 		filemetas = []*FileMetaData{}
 		numFiles := len(v.Files[level])
 		if numFiles == 0 {
@@ -95,7 +91,7 @@ func (v *Version) Get(internal_key internal.InternalKey) ([]byte, error) {
 		if level == 0 {
 			for idx := 0; idx < numFiles; idx++ {
 				meta := v.Files[level][idx]
-				if internal.UserKeyCompare(meta.Smallest.ExtractUserKey(), user_key) <= 0 && internal.Compare(meta.Largest.ExtractUserKey(), user_key) >= 0 {
+				if UserKeyCompare(meta.Smallest.ExtractUserKey(), user_key) <= 0 && Compare(meta.Largest.ExtractUserKey(), user_key) >= 0 {
 					filemetas = append(filemetas, meta)
 				}
 			}
@@ -110,7 +106,7 @@ func (v *Version) Get(internal_key internal.InternalKey) ([]byte, error) {
 			if index >= numFiles {
 				filemetas = nil
 			} else {
-				if internal.UserKeyCompare(user_key, v.Files[level][index].Smallest.ExtractUserKey()) < 0 {
+				if UserKeyCompare(user_key, v.Files[level][index].Smallest.ExtractUserKey()) < 0 {
 					filemetas = nil
 				} else {
 					filemetas = append(filemetas, v.Files[level][index])
@@ -119,12 +115,12 @@ func (v *Version) Get(internal_key internal.InternalKey) ([]byte, error) {
 		}
 		numFiles = len(filemetas)
 		for idx := 0; idx < numFiles; idx++ {
-			file, err := log.NewLinuxFile(internal.SSTableFileName(v.dbname, filemetas[idx].Number))
+			file, err := NewLinuxFile(SSTableFileName(v.dbname, filemetas[idx].Number))
 			if err != nil {
 				return nil, err
 			}
 			defer file.Close()
-			sstable, err := sstable.OpenSSTable(file, uint64(file.Size()))
+			sstable, err := OpenSSTable(file, uint64(file.Size()))
 			if err != nil {
 				return nil, err
 			}
@@ -156,7 +152,7 @@ func (v *Version) EncodeTo() []byte {
 
 func (v *Version) DecodeFrom(data []byte) {
 	v.NextFileNumber = binary.LittleEndian.Uint64(data)
-	v.LastSequence = internal.SequenceNumber(binary.LittleEndian.Uint64(data[8:]))
+	v.LastSequence = SequenceNumber(binary.LittleEndian.Uint64(data[8:]))
 	offset := uint32(16)
 	size := uint32(len(data))
 	for level := 0; offset < size; level++ {
@@ -179,7 +175,7 @@ func (v *Version) findFile(metas []*FileMetaData, user_key []byte) int {
 	for left < right {
 		mid := (left + right) / 2
 		f := metas[mid]
-		if internal.UserKeyCompare(f.Largest.ExtractUserKey(), user_key) < 0 {
+		if UserKeyCompare(f.Largest.ExtractUserKey(), user_key) < 0 {
 			// Key at "mid.largest" is < "target".  Therefore all
 			// files at or before "mid" are uninteresting.
 			left = mid + 1

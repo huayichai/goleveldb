@@ -1,4 +1,4 @@
-package internal
+package goleveldb
 
 type Iterator interface {
 	Valid() bool

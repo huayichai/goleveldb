@@ -1,16 +1,11 @@
-package wal
-
-import (
-	"github.com/huayichai/goleveldb/internal"
-	"github.com/huayichai/goleveldb/log"
-)
+package goleveldb
 
 type LogWriter struct {
-	dest        log.WritableFile
+	dest        WritableFile
 	blockOffset uint32
 }
 
-func NewLogWriter(dest log.WritableFile) *LogWriter {
+func NewLogWriter(dest WritableFile) *LogWriter {
 	return &LogWriter{
 		dest:        dest,
 		blockOffset: 0,
@@ -75,7 +70,7 @@ func (writer *LogWriter) emitPhysicalRecord(t RecordType, ptr []byte, length uin
 
 	// Compute the crc of the record type and the payload.
 	// not implement
-	internal.EncodeFixed32(header, 0) // crc32
+	EncodeFixed32(header, 0) // crc32
 
 	// Write the header and the payload
 	err := writer.dest.Append(string(header))

@@ -1,13 +1,10 @@
-package wal
+package goleveldb
 
 import (
 	"math/rand"
 	"os"
 	"testing"
 	"time"
-
-	"github.com/huayichai/goleveldb/internal"
-	"github.com/huayichai/goleveldb/log"
 )
 
 func GenerateRandomBytes(l int) []byte {
@@ -32,7 +29,7 @@ func GenerateSameBytes(l int, b byte) []byte {
 func Test_wal1(t *testing.T) {
 	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/wal"
 	os.RemoveAll(path)
-	file, err := log.NewLinuxFile(path)
+	file, err := NewLinuxFile(path)
 	if err != nil {
 		t.Fatal("create writable file failed")
 	}
@@ -55,7 +52,7 @@ func Test_wal1(t *testing.T) {
 	log_writer = nil
 
 	// read log
-	file, err = log.NewLinuxFile(path)
+	file, err = NewLinuxFile(path)
 	if err != nil {
 		t.Fatal("create writable file failed")
 	}
@@ -65,7 +62,7 @@ func Test_wal1(t *testing.T) {
 		if err != nil {
 			t.Fatal("log_reader read record failed")
 		}
-		if internal.Compare(records[i], v) != 0 {
+		if Compare(records[i], v) != 0 {
 			t.Fatal("log_reader read false record")
 		}
 	}
@@ -79,7 +76,7 @@ func Test_wal1(t *testing.T) {
 func Test_wal2(t *testing.T) {
 	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/wal"
 	os.RemoveAll(path)
-	file, err := log.NewLinuxFile(path)
+	file, err := NewLinuxFile(path)
 	if err != nil {
 		t.Fatal("create writable file failed")
 	}
@@ -102,7 +99,7 @@ func Test_wal2(t *testing.T) {
 	log_writer = nil
 
 	// read log
-	file, err = log.NewLinuxFile(path)
+	file, err = NewLinuxFile(path)
 	if err != nil {
 		t.Fatal("create writable file failed")
 	}
@@ -112,7 +109,7 @@ func Test_wal2(t *testing.T) {
 		if err != nil {
 			t.Fatal("log_reader read record failed")
 		}
-		if internal.Compare(records[i], v) != 0 {
+		if Compare(records[i], v) != 0 {
 			t.Fatal("log_reader read false record")
 		}
 	}
