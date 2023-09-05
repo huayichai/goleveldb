@@ -104,7 +104,6 @@ func (list *SkipList) findGreaterOrEqual(key interface{}) (*Node, [kMaxHeight]*N
 			}
 		}
 	}
-	return nil, prev
 }
 
 func (list *SkipList) findLessThan(key interface{}) *Node {
@@ -123,7 +122,6 @@ func (list *SkipList) findLessThan(key interface{}) *Node {
 			x = next
 		}
 	}
-	return nil
 }
 func (list *SkipList) findlast() *Node {
 	x := list.head
@@ -140,7 +138,6 @@ func (list *SkipList) findlast() *Node {
 			x = next
 		}
 	}
-	return nil
 }
 
 func (list *SkipList) keyIsAfterNode(key interface{}, n *Node) bool {

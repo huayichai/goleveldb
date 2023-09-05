@@ -63,7 +63,7 @@ func Test_wal1(t *testing.T) {
 		if err != nil {
 			t.Fatal("log_reader read record failed")
 		}
-		if bytes.Compare(records[i], v) != 0 {
+		if !bytes.Equal(records[i], v) {
 			t.Fatal("log_reader read false record")
 		}
 	}
@@ -110,7 +110,7 @@ func Test_wal2(t *testing.T) {
 		if err != nil {
 			t.Fatal("log_reader read record failed")
 		}
-		if bytes.Compare(records[i], v) != 0 {
+		if !bytes.Equal(records[i], v) {
 			t.Fatal("log_reader read false record")
 		}
 	}

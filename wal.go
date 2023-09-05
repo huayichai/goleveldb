@@ -147,7 +147,7 @@ func (writer *walWriter) emitPhysicalRecord(t recordType, ptr []byte, length uin
 	if err != nil {
 		return err
 	}
-	writer.dest.Sync()
+	// writer.dest.Sync()
 	writer.blockOffset += (kHeaderSize + length)
 	return nil
 }

@@ -49,6 +49,8 @@ func Open(option Options, name string) (*DB, error) {
 }
 
 func (db *DB) Put(key, value []byte) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	if err := db.makeRoomForWrite(); err != nil {
 		return err
 	}
@@ -96,7 +98,7 @@ func (db *DB) makeRoomForWrite() error {
 		} else if db.imm != nil {
 			// We have filled up the current memtable, but the previous
 			// one is still being compacted, so we wait.
-			db.backgroundWorkFinishedSignal.Wait()
+			db.backgroundWorkFinishedSignal.Wait() // will release the mutex 'db.mu'
 		} else {
 			// Attempt to switch to a new memtable and trigger compaction of old
 			db.switchToNewMemTable()
@@ -144,6 +146,8 @@ func (db *DB) writeLevel0Table(imm *memTable, ver *version) error {
 }
 
 func (db *DB) Close() error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	// wait background compaction
 	for db.imm != nil {
 		db.backgroundWorkFinishedSignal.Wait()
