@@ -12,6 +12,7 @@ type WritableFile interface {
 
 type RandomAccessFile interface {
 	Read(offset uint64, n uint32) ([]byte, error)
+	Close() error
 }
 
 type LinuxFile struct {

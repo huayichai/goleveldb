@@ -31,7 +31,8 @@ func (meta *fileMetaData) decodeFrom(data []byte) uint32 {
 }
 
 type version struct {
-	dbname         string
+	cache *tableCache
+
 	nextFileNumber uint64
 	lastSequence   SequenceNumber
 	files          [NumLevels][]*fileMetaData
@@ -39,9 +40,9 @@ type version struct {
 	compactPointer [NumLevels]InternalKey
 }
 
-func newVersion(dbname string) *version {
+func newVersion(cache *tableCache) *version {
 	var version version
-	version.dbname = dbname
+	version.cache = cache
 	version.nextFileNumber = 1
 	version.lastSequence = 0
 	return &version
@@ -114,16 +115,7 @@ func (v *version) get(internal_key InternalKey) ([]byte, error) {
 		}
 		numfiles = len(filemetas)
 		for idx := 0; idx < numfiles; idx++ {
-			file, err := NewLinuxFile(sstableFileName(v.dbname, filemetas[idx].number))
-			if err != nil {
-				return nil, err
-			}
-			defer file.Close()
-			sstable, err := openSSTable(file, uint64(file.Size()))
-			if err != nil {
-				return nil, err
-			}
-			value, err := sstable.get(internal_key)
+			value, err := v.cache.get(filemetas[idx].number, internal_key)
 			if err == nil {
 				return value, nil
 			}

@@ -30,6 +30,10 @@ type Options struct {
 	// and a new sstable building process begin.
 	// Default value is 128MB
 	MaxFileSize uint32
+
+	// MaxOpenFiles is the lru cache capacity.
+	// Default value is 2GB / MaxFileSize
+	MaxOpenFiles uint32
 }
 
 const (
@@ -49,5 +53,6 @@ func DefaultOptions() *Options {
 	option.MemTableSize = 64 * MB
 	option.BlockSize = 4 * KB
 	option.MaxFileSize = 128 * MB
+	option.MaxOpenFiles = 2 * GB / option.MaxFileSize
 	return &option
 }

@@ -13,6 +13,8 @@ type DB struct {
 	mem *memTable // Memtable
 	imm *memTable // Memtable being compacted
 
+	cache *tableCache
+
 	currentLogFileNumber uint64
 	logWriter            *walWriter
 
@@ -29,6 +31,12 @@ func Open(option Options) (*DB, error) {
 	var err error
 	db.option = option
 	db.backgroundCompactionScheduled = false
+
+	// init TableCache
+	db.cache, err = newTableCache(&db.option)
+	if err != nil {
+		return nil, err
+	}
 
 	// recover from last close
 	if err = db.Recover(); err != nil {
@@ -170,10 +178,10 @@ func (db *DB) Recover() error {
 		if err = os.MkdirAll(dbpath, 0755); err != nil {
 			return err
 		}
-		db.current = newVersion(dbpath)
+		db.current = newVersion(db.cache)
 		return nil
 	} else { // recover from last close
-		db.current = newVersion(dbpath)
+		db.current = newVersion(db.cache)
 		file, err := NewLinuxFile(manifestFileName(dbpath))
 		if err != nil {
 			return err

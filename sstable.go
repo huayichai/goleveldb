@@ -280,9 +280,14 @@ type sstable struct {
 	datablock  *block
 }
 
-func openSSTable(file RandomAccessFile, size uint64) (*sstable, error) {
+func openSSTable(filepath string) (*sstable, error) {
 	var table sstable
+	file, err := NewLinuxFile(filepath)
+	if err != nil {
+		return nil, err
+	}
 	table.file = file
+	size := uint64(file.Size())
 
 	// Read the footer
 	footer_data, err := table.file.Read(size-uint64(kEncodedLength), uint32(kEncodedLength))
@@ -304,6 +309,10 @@ func openSSTable(file RandomAccessFile, size uint64) (*sstable, error) {
 	}
 
 	return &table, nil
+}
+
+func (table *sstable) close() error {
+	return table.file.Close()
 }
 
 // Firstly, locate the block according to the index block,
