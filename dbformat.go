@@ -2,6 +2,7 @@ package goleveldb
 
 import (
 	"bytes"
+	"encoding/binary"
 )
 
 const (
@@ -162,4 +163,19 @@ func (entry KVEntry) ExtractValue() []byte {
 
 func KVEntryCompare(a, b KVEntry) int {
 	return InternalKeyCompare(a.ExtractInternalKey(), b.ExtractInternalKey())
+}
+
+func PutLengthPrefixedSlice(value []byte) []byte {
+	size := uint32(len(value))
+	p := make([]byte, 4+size)
+	binary.LittleEndian.PutUint32(p, size)
+	copy(p[4:], value)
+	return p
+}
+
+func GetLengthPrefixedSlice(input []byte) ([]byte, uint32) {
+	size := binary.LittleEndian.Uint32(input[0:4])
+	value_begin_offset := 4
+	value_end_offset := value_begin_offset + int(size)
+	return input[value_begin_offset:value_end_offset], 4 + size
 }

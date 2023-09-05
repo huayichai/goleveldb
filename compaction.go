@@ -1,41 +1,33 @@
 package goleveldb
 
-type Compaction struct {
+type compaction struct {
 	level  int
-	inputs [2][]*FileMetaData
-}
-
-func (c *Compaction) Level() int {
-	return c.level
-}
-
-func (c *Compaction) Input() [2][]*FileMetaData {
-	return c.inputs
+	inputs [2][]*fileMetaData
 }
 
 // Is this a trivial compaction that can be implemented by just
 // moving a single input file to the next level (no merging or splitting)
-func (c *Compaction) IsTrivialMove() bool {
+func (c *compaction) isTrivialMove() bool {
 	return len(c.inputs[0]) == 1 && len(c.inputs[1]) == 0
 }
 
-func (v *Version) PickCompaction() *Compaction {
-	var c Compaction
+func (v *version) pickCompaction() *compaction {
+	var c compaction
 	c.level, _ = v.pickCompactionLevel()
 	if c.level < 0 {
 		return nil
 	}
 
 	// Pick the first file that comes after compact_pointer_[level]
-	for i := 0; i < len(v.Files[c.level]); i++ {
-		f := v.Files[c.level][i]
-		if v.compactPointer[c.level] == nil || InternalKeyCompare(f.Largest, v.compactPointer[c.level]) > 0 {
+	for i := 0; i < len(v.files[c.level]); i++ {
+		f := v.files[c.level][i]
+		if v.compactPointer[c.level] == nil || InternalKeyCompare(f.largest, v.compactPointer[c.level]) > 0 {
 			c.inputs[0] = append(c.inputs[0], f)
 			break
 		}
 	}
 	if len(c.inputs[0]) == 0 {
-		c.inputs[0] = append(c.inputs[0], v.Files[c.level][0])
+		c.inputs[0] = append(c.inputs[0], v.files[c.level][0])
 	}
 
 	// Files in level 0 may overlap each other, so pick up all overlapping ones
@@ -49,7 +41,7 @@ func (v *Version) PickCompaction() *Compaction {
 	return &c
 }
 
-func (v *Version) pickCompactionLevel() (int, float64) {
+func (v *version) pickCompactionLevel() (int, float64) {
 	best_level := -1
 	best_score := -1.0
 	for level := 0; level < int(NumLevels-1); level++ {
@@ -66,9 +58,9 @@ func (v *Version) pickCompactionLevel() (int, float64) {
 			// file size is small (perhaps because of a small write-buffer
 			// setting, or very high compression ratios, or lots of
 			// overwrites/deletions).
-			score = float64(len(v.Files[level])) / float64(L0_CompactionTrigger)
+			score = float64(len(v.files[level])) / float64(L0_CompactionTrigger)
 		} else {
-			score = float64(totalFileSize(v.Files[level])) / maxBytesForLevel(level)
+			score = float64(totalFileSize(v.files[level])) / maxBytesForLevel(level)
 		}
 		if score > best_score {
 			best_level = level
@@ -80,18 +72,18 @@ func (v *Version) pickCompactionLevel() (int, float64) {
 
 // Stores the minimal range that covers all entries in inputs in
 // @return smallest, largest.
-func (v *Version) getRange(metas []*FileMetaData) (InternalKey, InternalKey) {
+func (v *version) getRange(metas []*fileMetaData) (InternalKey, InternalKey) {
 	var smallest, largest InternalKey
 	for i := 0; i < len(metas); i++ {
 		if i == 0 {
-			smallest = metas[i].Smallest
-			largest = metas[i].Largest
+			smallest = metas[i].smallest
+			largest = metas[i].largest
 		} else {
-			if InternalKeyCompare(metas[i].Smallest, smallest) < 0 {
-				smallest = metas[i].Smallest
+			if InternalKeyCompare(metas[i].smallest, smallest) < 0 {
+				smallest = metas[i].smallest
 			}
-			if InternalKeyCompare(metas[i].Largest, largest) > 0 {
-				largest = metas[i].Largest
+			if InternalKeyCompare(metas[i].largest, largest) > 0 {
+				largest = metas[i].largest
 			}
 		}
 	}
@@ -99,13 +91,13 @@ func (v *Version) getRange(metas []*FileMetaData) (InternalKey, InternalKey) {
 }
 
 // Store in "outputs" all files in "level" that overlap [begin,end]
-func (v *Version) getOverlappingInputs(level int, begin, end InternalKey) []*FileMetaData {
+func (v *version) getOverlappingInputs(level int, begin, end InternalKey) []*fileMetaData {
 	user_begin, user_end := begin.ExtractUserKey(), end.ExtractUserKey()
-	outputs := make([]*FileMetaData, 0)
-	for i := 0; i < len(v.Files[level]); i++ {
-		f := v.Files[level][i]
-		file_start := f.Smallest.ExtractUserKey()
-		file_limit := f.Largest.ExtractUserKey()
+	outputs := make([]*fileMetaData, 0)
+	for i := 0; i < len(v.files[level]); i++ {
+		f := v.files[level][i]
+		file_start := f.smallest.ExtractUserKey()
+		file_limit := f.largest.ExtractUserKey()
 		if UserKeyCompare(file_limit, user_begin) < 0 {
 			// "f" is completely before specified range; skip it
 		} else if UserKeyCompare(file_start, user_end) > 0 {
@@ -130,17 +122,17 @@ func (v *Version) getOverlappingInputs(level int, begin, end InternalKey) []*Fil
 	return outputs
 }
 
-func (v *Version) setupOtherInputs(c *Compaction) {
+func (v *version) setupOtherInputs(c *compaction) {
 	smallest, largest := v.getRange(c.inputs[0])
 	c.inputs[1] = v.getOverlappingInputs(c.level+1, smallest, largest)
 	v.compactPointer[c.level] = largest
 }
 
-func totalFileSize(files []*FileMetaData) uint64 {
+func totalFileSize(files []*fileMetaData) uint64 {
 	var sum uint64
 	sum = 0
 	for i := 0; i < len(files); i++ {
-		sum += files[i].FileSize
+		sum += files[i].fileSize
 	}
 	return sum
 }

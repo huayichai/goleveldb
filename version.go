@@ -6,92 +6,92 @@ import (
 	"sort"
 )
 
-type FileMetaData struct {
-	FileSize uint64      // File size in bytes
-	Number   uint64      // file number
-	Smallest InternalKey // Smallest internal key served by table
-	Largest  InternalKey // Largest internal key served by table
+type fileMetaData struct {
+	fileSize uint64      // File size in bytes
+	number   uint64      // file number
+	smallest InternalKey // Smallest internal key served by table
+	largest  InternalKey // Largest internal key served by table
 }
 
-func (meta *FileMetaData) EncodeTo() []byte {
+func (meta *fileMetaData) encodeTo() []byte {
 	buf := make([]byte, 16)
-	binary.LittleEndian.PutUint64(buf[0:8], meta.FileSize)
-	binary.LittleEndian.PutUint64(buf[8:16], meta.Number)
-	buf = append(buf, PutLengthPrefixedSlice(meta.Smallest)...)
-	buf = append(buf, PutLengthPrefixedSlice(meta.Largest)...)
+	binary.LittleEndian.PutUint64(buf[0:8], meta.fileSize)
+	binary.LittleEndian.PutUint64(buf[8:16], meta.number)
+	buf = append(buf, PutLengthPrefixedSlice(meta.smallest)...)
+	buf = append(buf, PutLengthPrefixedSlice(meta.largest)...)
 	return buf
 }
 
-func (meta *FileMetaData) DecodeFrom(data []byte) uint32 {
-	meta.FileSize = binary.LittleEndian.Uint64(data[0:8])
-	meta.Number = binary.LittleEndian.Uint64(data[8:16])
+func (meta *fileMetaData) decodeFrom(data []byte) uint32 {
+	meta.fileSize = binary.LittleEndian.Uint64(data[0:8])
+	meta.number = binary.LittleEndian.Uint64(data[8:16])
 	var n1, n2 uint32
-	meta.Smallest, n1 = GetLengthPrefixedSlice(data[16:])
-	meta.Largest, n2 = GetLengthPrefixedSlice(data[16+n1:])
+	meta.smallest, n1 = GetLengthPrefixedSlice(data[16:])
+	meta.largest, n2 = GetLengthPrefixedSlice(data[16+n1:])
 	return 16 + n1 + n2
 }
 
-type Version struct {
+type version struct {
 	dbname         string
-	NextFileNumber uint64
-	LastSequence   SequenceNumber
-	Files          [NumLevels][]*FileMetaData
+	nextFileNumber uint64
+	lastSequence   SequenceNumber
+	files          [NumLevels][]*fileMetaData
 
 	compactPointer [NumLevels]InternalKey
 }
 
-func NewVersion(dbname string) *Version {
-	var version Version
+func newVersion(dbname string) *version {
+	var version version
 	version.dbname = dbname
-	version.NextFileNumber = 1
-	version.LastSequence = 0
+	version.nextFileNumber = 1
+	version.lastSequence = 0
 	return &version
 }
 
-func (v *Version) NumLevelFiles(l uint32) uint32 {
-	return uint32(len(v.Files[l]))
+func (v *version) numLevelFiles(l uint32) uint32 {
+	return uint32(len(v.files[l]))
 }
 
-func (v *Version) AddFile(level int, meta *FileMetaData) {
+func (v *version) addFile(level int, meta *fileMetaData) {
 	if level == 0 {
-		v.Files[level] = append(v.Files[level], meta)
+		v.files[level] = append(v.files[level], meta)
 	} else {
-		numFiles := len(v.Files[level])
-		index := v.findFile(v.Files[level], meta.Smallest.ExtractUserKey())
-		if index >= numFiles {
-			v.Files[level] = append(v.Files[level], meta)
+		numfiles := len(v.files[level])
+		index := v.findFile(v.files[level], meta.smallest.ExtractUserKey())
+		if index >= numfiles {
+			v.files[level] = append(v.files[level], meta)
 		} else {
-			var tmp []*FileMetaData
-			tmp = append(tmp, v.Files[level][:index]...)
+			var tmp []*fileMetaData
+			tmp = append(tmp, v.files[level][:index]...)
 			tmp = append(tmp, meta)
-			v.Files[level] = append(tmp, v.Files[level][index:]...)
+			v.files[level] = append(tmp, v.files[level][index:]...)
 		}
 	}
 }
 
-func (v *Version) DeleteFile(level int, meta *FileMetaData) {
-	numFiles := len(v.Files[level])
-	for i := 0; i < numFiles; i++ {
-		if v.Files[level][i].Number == meta.Number {
-			v.Files[level] = append(v.Files[level][:i], v.Files[level][i+1:]...)
+func (v *version) deleteFile(level int, meta *fileMetaData) {
+	numfiles := len(v.files[level])
+	for i := 0; i < numfiles; i++ {
+		if v.files[level][i].number == meta.number {
+			v.files[level] = append(v.files[level][:i], v.files[level][i+1:]...)
 			break
 		}
 	}
 }
 
-func (v *Version) Get(internal_key InternalKey) ([]byte, error) {
-	var filemetas []*FileMetaData
+func (v *version) get(internal_key InternalKey) ([]byte, error) {
+	var filemetas []*fileMetaData
 	user_key := internal_key.ExtractUserKey()
 	for level := 0; level < int(NumLevels); level++ {
-		filemetas = []*FileMetaData{}
-		numFiles := len(v.Files[level])
-		if numFiles == 0 {
+		filemetas = []*fileMetaData{}
+		numfiles := len(v.files[level])
+		if numfiles == 0 {
 			continue
 		}
 		if level == 0 {
-			for idx := 0; idx < numFiles; idx++ {
-				meta := v.Files[level][idx]
-				if UserKeyCompare(meta.Smallest.ExtractUserKey(), user_key) <= 0 && UserKeyCompare(meta.Largest.ExtractUserKey(), user_key) >= 0 {
+			for idx := 0; idx < numfiles; idx++ {
+				meta := v.files[level][idx]
+				if UserKeyCompare(meta.smallest.ExtractUserKey(), user_key) <= 0 && UserKeyCompare(meta.largest.ExtractUserKey(), user_key) >= 0 {
 					filemetas = append(filemetas, meta)
 				}
 			}
@@ -99,32 +99,32 @@ func (v *Version) Get(internal_key InternalKey) ([]byte, error) {
 				continue
 			}
 			sort.Slice(filemetas, func(i, j int) bool {
-				return filemetas[i].Number > filemetas[j].Number
+				return filemetas[i].number > filemetas[j].number
 			})
 		} else {
-			index := v.findFile(v.Files[level], user_key)
-			if index >= numFiles {
+			index := v.findFile(v.files[level], user_key)
+			if index >= numfiles {
 				filemetas = nil
 			} else {
-				if UserKeyCompare(user_key, v.Files[level][index].Smallest.ExtractUserKey()) < 0 {
+				if UserKeyCompare(user_key, v.files[level][index].smallest.ExtractUserKey()) < 0 {
 					filemetas = nil
 				} else {
-					filemetas = append(filemetas, v.Files[level][index])
+					filemetas = append(filemetas, v.files[level][index])
 				}
 			}
 		}
-		numFiles = len(filemetas)
-		for idx := 0; idx < numFiles; idx++ {
-			file, err := NewLinuxFile(SSTableFileName(v.dbname, filemetas[idx].Number))
+		numfiles = len(filemetas)
+		for idx := 0; idx < numfiles; idx++ {
+			file, err := NewLinuxFile(sstableFileName(v.dbname, filemetas[idx].number))
 			if err != nil {
 				return nil, err
 			}
 			defer file.Close()
-			sstable, err := OpenSSTable(file, uint64(file.Size()))
+			sstable, err := openSSTable(file, uint64(file.Size()))
 			if err != nil {
 				return nil, err
 			}
-			value, err := sstable.Get(internal_key)
+			value, err := sstable.get(internal_key)
 			if err != nil {
 				return nil, err
 			}
@@ -134,49 +134,49 @@ func (v *Version) Get(internal_key InternalKey) ([]byte, error) {
 	return nil, fmt.Errorf("%s", "Not Found")
 }
 
-func (v *Version) EncodeTo() []byte {
+func (v *version) encodeTo() []byte {
 	buf := make([]byte, 16)
-	binary.LittleEndian.PutUint64(buf, v.NextFileNumber)
-	binary.LittleEndian.PutUint64(buf[8:], uint64(v.LastSequence))
-	for level := 0; level < len(v.Files); level++ {
-		level_size := len(v.Files[level])
+	binary.LittleEndian.PutUint64(buf, v.nextFileNumber)
+	binary.LittleEndian.PutUint64(buf[8:], uint64(v.lastSequence))
+	for level := 0; level < len(v.files); level++ {
+		level_size := len(v.files[level])
 		tmp := make([]byte, 4)
 		binary.LittleEndian.PutUint32(tmp, uint32(level_size))
 		buf = append(buf, tmp...)
 		for idx := 0; idx < level_size; idx++ {
-			buf = append(buf, v.Files[level][idx].EncodeTo()...)
+			buf = append(buf, v.files[level][idx].encodeTo()...)
 		}
 	}
 	return buf
 }
 
-func (v *Version) DecodeFrom(data []byte) {
-	v.NextFileNumber = binary.LittleEndian.Uint64(data)
-	v.LastSequence = SequenceNumber(binary.LittleEndian.Uint64(data[8:]))
+func (v *version) decodeFrom(data []byte) {
+	v.nextFileNumber = binary.LittleEndian.Uint64(data)
+	v.lastSequence = SequenceNumber(binary.LittleEndian.Uint64(data[8:]))
 	offset := uint32(16)
 	size := uint32(len(data))
 	for level := 0; offset < size; level++ {
-		var metas []*FileMetaData
+		var metas []*fileMetaData
 		level_size := binary.LittleEndian.Uint32(data[offset:])
 		offset += 4
 		for idx := 0; idx < int(level_size); idx++ {
-			var meta FileMetaData
-			n := meta.DecodeFrom(data[offset:])
+			var meta fileMetaData
+			n := meta.decodeFrom(data[offset:])
 			offset += n
 			metas = append(metas, &meta)
 		}
-		v.Files[level] = metas
+		v.files[level] = metas
 	}
 }
 
 // Find the first file which largest key >= userkey
-func (v *Version) findFile(metas []*FileMetaData, user_key UserKey) int {
+func (v *version) findFile(metas []*fileMetaData, user_key UserKey) int {
 	left := 0
 	right := len(metas)
 	for left < right {
 		mid := (left + right) / 2
 		f := metas[mid]
-		if UserKeyCompare(f.Largest.ExtractUserKey(), user_key) < 0 {
+		if UserKeyCompare(f.largest.ExtractUserKey(), user_key) < 0 {
 			// Key at "mid.largest" is < "target".  Therefore all
 			// files at or before "mid" are uninteresting.
 			left = mid + 1

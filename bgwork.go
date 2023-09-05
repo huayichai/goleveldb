@@ -22,12 +22,12 @@ func (db *DB) backgroundCompaction() {
 		return
 	}
 
-	c := db.current.PickCompaction()
+	c := db.current.pickCompaction()
 	if c == nil {
 		// Nothing to do
-	} else if c.IsTrivialMove() {
-		db.current.DeleteFile(c.Level(), c.Input()[0][0])
-		db.current.AddFile(c.Level()+1, c.Input()[0][0])
+	} else if c.isTrivialMove() {
+		db.current.deleteFile(c.level, c.inputs[0][0])
+		db.current.addFile(c.level+1, c.inputs[0][0])
 	} else {
 		db.doCompaction(c)
 	}
@@ -37,31 +37,31 @@ func (db *DB) compactMemTable() {
 	if err := db.writeLevel0Table(db.imm, db.current); err != nil {
 		panic("writeLevel0Table failed")
 	}
-	if err := RemoveFile(db.imm.GetLogPath()); err != nil {
+	if err := RemoveFile(db.imm.getLogPath()); err != nil {
 		panic("remove log file failed")
 	}
 	db.imm = nil
 }
 
-func (db *DB) doCompaction(c *Compaction) {
-	var list []*FileMetaData
+func (db *DB) doCompaction(c *compaction) {
+	var list []*fileMetaData
 	iter := db.makeInputIterator(c)
 	var prev_user_key []byte = nil
 	var current_user_key []byte = nil
 
-	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
-		var meta FileMetaData
-		meta.Number = db.current.NextFileNumber
-		db.current.NextFileNumber++
-		file, err := NewLinuxFile(SSTableFileName(db.dbname, meta.Number))
+	for iter.seekToFirst(); iter.valid(); iter.next() {
+		var meta fileMetaData
+		meta.number = db.current.nextFileNumber
+		db.current.nextFileNumber++
+		file, err := NewLinuxFile(sstableFileName(db.dbname, meta.number))
 		if err != nil {
 			panic(err.Error())
 		}
-		builder := NewTableBuilder(&db.option, file)
+		builder := newTableBuilder(&db.option, file)
 
-		meta.Smallest = iter.InternalKey()
-		for ; iter.Valid(); iter.Next() {
-			internal_key := iter.InternalKey()
+		meta.smallest = iter.internalKey()
+		for ; iter.valid(); iter.next() {
+			internal_key := iter.internalKey()
 			current_user_key = internal_key.ExtractUserKey()
 			if prev_user_key != nil {
 				res := UserKeyCompare(prev_user_key, current_user_key)
@@ -72,44 +72,42 @@ func (db *DB) doCompaction(c *Compaction) {
 				}
 			}
 			prev_user_key = current_user_key
-			meta.Largest = current_user_key
-			builder.Add(internal_key, iter.Value())
-			if builder.FileSize() > uint64(MaxFileSize) {
+			meta.largest = current_user_key
+			builder.add(internal_key, iter.value())
+			if builder.fileSize() > uint64(MaxFileSize) {
 				break
 			}
 		}
-		builder.Finish()
-		meta.FileSize = builder.FileSize()
+		builder.finish()
+		meta.fileSize = builder.fileSize()
 		list = append(list, &meta)
 	}
 
-	inputs := c.Input()
-	for i := 0; i < len(inputs[0]); i++ {
-		db.current.DeleteFile(c.Level(), inputs[0][i])
+	for i := 0; i < len(c.inputs[0]); i++ {
+		db.current.deleteFile(c.level, c.inputs[0][i])
 	}
-	for i := 0; i < len(inputs[1]); i++ {
-		db.current.DeleteFile(c.Level()+1, inputs[1][i])
+	for i := 0; i < len(c.inputs[1]); i++ {
+		db.current.deleteFile(c.level, c.inputs[1][i])
 	}
 	for i := 0; i < len(list); i++ {
-		db.current.AddFile(c.Level()+1, list[i])
+		db.current.addFile(c.level+1, list[i])
 	}
 }
 
-func (db *DB) makeInputIterator(c *Compaction) *MergeIterator {
-	list := make([]*SSTableIterator, 0)
-	inputs := c.Input()
+func (db *DB) makeInputIterator(c *compaction) *mergeIterator {
+	list := make([]*sstableIterator, 0)
 	for i := 0; i < 2; i++ {
-		for j := 0; j < len(inputs[i]); j++ {
-			file, err := NewLinuxFile(SSTableFileName(db.dbname, inputs[i][j].Number))
+		for j := 0; j < len(c.inputs[i]); j++ {
+			file, err := NewLinuxFile(sstableFileName(db.dbname, c.inputs[i][j].number))
 			if err != nil {
 				panic(err.Error())
 			}
-			table, err := OpenSSTable(file, uint64(file.Size()))
+			table, err := openSSTable(file, uint64(file.Size()))
 			if err != nil {
 				panic(err.Error())
 			}
-			list = append(list, NewSSTableIterator(table))
+			list = append(list, newSSTableIterator(table))
 		}
 	}
-	return NewMergeIterator(list)
+	return newMergeIterator(list)
 }

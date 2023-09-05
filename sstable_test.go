@@ -1,6 +1,7 @@
 package goleveldb
 
 import (
+	"bytes"
 	"os"
 	"testing"
 )
@@ -12,37 +13,37 @@ func TestSSTableBuild(t *testing.T) {
 	defer file.Close()
 	options := NewOptions()
 	options.BlockSize = 16
-	builder := NewTableBuilder(options, file)
+	builder := newTableBuilder(options, file)
 
-	builder.Add([]byte("a"), []byte("valuea"))
-	builder.Add([]byte("b"), []byte("valueb"))
-	builder.Add([]byte("c"), []byte("valuec"))
-	builder.Add([]byte("d"), []byte("valued"))
-	builder.Finish()
+	builder.add([]byte("a"), []byte("valuea"))
+	builder.add([]byte("b"), []byte("valueb"))
+	builder.add([]byte("c"), []byte("valuec"))
+	builder.add([]byte("d"), []byte("valued"))
+	builder.finish()
 }
 
 func TestSSTableRead(t *testing.T) {
 	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/file0"
 	file, _ := NewLinuxFile(path)
-	table, _ := OpenSSTable(file, uint64(file.Size()))
+	table, _ := openSSTable(file, uint64(file.Size()))
 
-	va, _ := table.Get([]byte("a"))
-	if Compare(va, []byte("valuea")) != 0 {
+	va, _ := table.get([]byte("a"))
+	if bytes.Compare(va, []byte("valuea")) != 0 {
 		t.Fatalf("failed get key a")
 	}
 
-	vb, _ := table.Get([]byte("b"))
-	if Compare(vb, []byte("valueb")) != 0 {
+	vb, _ := table.get([]byte("b"))
+	if bytes.Compare(vb, []byte("valueb")) != 0 {
 		t.Fatalf("failed get key b")
 	}
 
-	vc, _ := table.Get([]byte("c"))
-	if Compare(vc, []byte("valuec")) != 0 {
+	vc, _ := table.get([]byte("c"))
+	if bytes.Compare(vc, []byte("valuec")) != 0 {
 		t.Fatalf("failed get key c")
 	}
 
-	vd, _ := table.Get([]byte("d"))
-	if Compare(vd, []byte("valued")) != 0 {
+	vd, _ := table.get([]byte("d"))
+	if bytes.Compare(vd, []byte("valued")) != 0 {
 		t.Fatalf("failed get key d")
 	}
 
@@ -57,40 +58,40 @@ func TestSSTable1(t *testing.T) {
 	file, _ := NewLinuxFile(path)
 	options := NewOptions()
 	options.BlockSize = 16
-	builder := NewTableBuilder(options, file)
+	builder := newTableBuilder(options, file)
 	// add key value
-	builder.Add([]byte("1name"), []byte("huayichai"))
-	builder.Add([]byte("2school"), []byte("nju"))
-	builder.Add([]byte("3age"), []byte("23"))
-	builder.Add([]byte("4gender"), []byte("male"))
-	builder.Finish()
+	builder.add([]byte("1name"), []byte("huayichai"))
+	builder.add([]byte("2school"), []byte("nju"))
+	builder.add([]byte("3age"), []byte("23"))
+	builder.add([]byte("4gender"), []byte("male"))
+	builder.finish()
 	file.Close()
 
 	// lookup sstable
 	file, _ = NewLinuxFile(path)
-	table, _ := OpenSSTable(file, uint64(file.Size()))
+	table, _ := openSSTable(file, uint64(file.Size()))
 
-	v, _ := table.Get([]byte("1name"))
-	if Compare(v, []byte("huayichai")) != 0 {
+	v, _ := table.get([]byte("1name"))
+	if bytes.Compare(v, []byte("huayichai")) != 0 {
 		t.Fatalf("failed get key")
 	}
 
-	v, _ = table.Get([]byte("2school"))
-	if Compare(v, []byte("nju")) != 0 {
+	v, _ = table.get([]byte("2school"))
+	if bytes.Compare(v, []byte("nju")) != 0 {
 		t.Fatalf("failed get key")
 	}
 
-	v, _ = table.Get([]byte("3age"))
-	if Compare(v, []byte("23")) != 0 {
+	v, _ = table.get([]byte("3age"))
+	if bytes.Compare(v, []byte("23")) != 0 {
 		t.Fatalf("failed get key")
 	}
 
-	v, _ = table.Get([]byte("4gender"))
-	if Compare(v, []byte("male")) != 0 {
+	v, _ = table.get([]byte("4gender"))
+	if bytes.Compare(v, []byte("male")) != 0 {
 		t.Fatalf("failed get key")
 	}
 
-	_, s := table.Get([]byte("not_exist_key"))
+	_, s := table.get([]byte("not_exist_key"))
 	if s == nil {
 		t.Fatalf("failed get key")
 	}

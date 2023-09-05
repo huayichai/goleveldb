@@ -1,6 +1,7 @@
 package goleveldb
 
 import (
+	"bytes"
 	"math/rand"
 	"os"
 	"testing"
@@ -40,9 +41,9 @@ func Test_wal1(t *testing.T) {
 	records := [][]byte{record_a, record_b, record_c}
 
 	// write log
-	log_writer := NewLogWriter(file)
+	log_writer := newWALWriter(file)
 	for i := 0; i < len(records); i++ {
-		err = log_writer.AddRecord(records[i])
+		err = log_writer.addRecord(records[i])
 		if err != nil {
 			t.Fatal("log_writer add record failed")
 		}
@@ -56,13 +57,13 @@ func Test_wal1(t *testing.T) {
 	if err != nil {
 		t.Fatal("create writable file failed")
 	}
-	log_reader := NewLogReader(file)
+	log_reader := newWALReader(file)
 	for i := 0; i < len(records); i++ {
-		v, err := log_reader.ReadRecord()
+		v, err := log_reader.readRecord()
 		if err != nil {
 			t.Fatal("log_reader read record failed")
 		}
-		if Compare(records[i], v) != 0 {
+		if bytes.Compare(records[i], v) != 0 {
 			t.Fatal("log_reader read false record")
 		}
 	}
@@ -87,9 +88,9 @@ func Test_wal2(t *testing.T) {
 	records := [][]byte{record_a, record_b, record_c}
 
 	// write log
-	log_writer := NewLogWriter(file)
+	log_writer := newWALWriter(file)
 	for i := 0; i < len(records); i++ {
-		err = log_writer.AddRecord(records[i])
+		err = log_writer.addRecord(records[i])
 		if err != nil {
 			t.Fatal("log_writer add record failed")
 		}
@@ -103,13 +104,13 @@ func Test_wal2(t *testing.T) {
 	if err != nil {
 		t.Fatal("create writable file failed")
 	}
-	log_reader := NewLogReader(file)
+	log_reader := newWALReader(file)
 	for i := 0; i < len(records); i++ {
-		v, err := log_reader.ReadRecord()
+		v, err := log_reader.readRecord()
 		if err != nil {
 			t.Fatal("log_reader read record failed")
 		}
-		if Compare(records[i], v) != 0 {
+		if bytes.Compare(records[i], v) != 0 {
 			t.Fatal("log_reader read false record")
 		}
 	}

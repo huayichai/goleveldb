@@ -11,13 +11,13 @@ type DB struct {
 	dbname string // As root dir name
 	option Options
 
-	mem *MemTable // Memtable
-	imm *MemTable // Memtable being compacted
+	mem *memTable // Memtable
+	imm *memTable // Memtable being compacted
 
 	currentLogFileNumber uint64
-	logWriter            *LogWriter
+	logWriter            *walWriter
 
-	current *Version
+	current *version
 
 	backgroundCompactionScheduled bool
 
@@ -50,48 +50,44 @@ func (db *DB) Put(key, value []byte) error {
 		return err
 	}
 
-	seq := db.current.LastSequence
-	db.current.LastSequence++
+	seq := db.current.lastSequence
+	db.current.lastSequence++
 
-	if err := db.logWriter.AddRecord([]byte(NewKVEntry(seq, KTypeValue, key, value))); err != nil {
+	if err := db.logWriter.addRecord([]byte(NewKVEntry(seq, KTypeValue, key, value))); err != nil {
 		panic("wal write failed")
 	}
-	db.mem.Add(seq, KTypeValue, key, value)
+	db.mem.add(seq, KTypeValue, key, value)
 	return nil
 }
 
 func (db *DB) Get(key []byte) ([]byte, error) {
-	snapshot := db.current.LastSequence
+	snapshot := db.current.lastSequence
 	mem := db.mem
 	imm := db.imm
 	current := db.current
 
 	lookup_key := NewLookupKey(key, snapshot)
-	v, ok := mem.Get(lookup_key)
+	v, ok := mem.get(lookup_key)
 	if ok {
 		return v, nil
 	}
 	if imm != nil {
-		v, ok = imm.Get(lookup_key)
+		v, ok = imm.get(lookup_key)
 		if ok {
 			return v, nil
 		}
 	}
 
-	value, err := current.Get(lookup_key.ExtractInternalKey())
+	value, err := current.get(lookup_key.ExtractInternalKey())
 	return value, err
 }
 
 func (db *DB) makeRoomForWrite() error {
-	// db.mu.Lock()
-	// defer db.mu.Unlock()
 	for {
-		if db.current.NumLevelFiles(0) >= L0_SlowdownWritesTrigger {
-			// db.mu.Unlock()
+		if db.current.numLevelFiles(0) >= L0_SlowdownWritesTrigger {
 			time.Sleep(time.Duration(1) * time.Second)
 			db.maybeScheduleCompaction()
-			// db.mu.Lock()
-		} else if db.mem.ApproximateMemoryUsage() < uint64(db.option.Write_buffer_size) {
+		} else if db.mem.approximateMemoryUsage() < uint64(db.option.Write_buffer_size) {
 			// There is room in current memtable
 			return nil
 		} else if db.imm != nil {
@@ -106,48 +102,45 @@ func (db *DB) makeRoomForWrite() error {
 	}
 }
 
-func (db *DB) writeLevel0Table(imm *MemTable, ver *Version) error {
+func (db *DB) writeLevel0Table(imm *memTable, ver *version) error {
 	// FileMetaData
-	var meta FileMetaData
-	meta.Number = ver.NextFileNumber
+	var meta fileMetaData
+	meta.number = ver.nextFileNumber
 
 	// file
-	ver.NextFileNumber++
-	filename := SSTableFileName(db.dbname, meta.Number)
+	ver.nextFileNumber++
+	filename := sstableFileName(db.dbname, meta.number)
 	file, err := NewLinuxFile(filename)
 	if err != nil {
 		return err
 	}
 
 	// sstable build
-	builder := NewTableBuilder(&db.option, file)
+	builder := newTableBuilder(&db.option, file)
 
-	iter := imm.Iterator()
+	iter := imm.iterator()
 	iter.SeekToFirst()
 	if iter.Valid() {
 		memkey := KVEntry(iter.Key())
-		meta.Smallest = memkey.ExtractInternalKey()
+		meta.smallest = memkey.ExtractInternalKey()
 		for ; iter.Valid(); iter.Next() {
 			memkey = KVEntry(iter.Key())
 			internal_key := memkey.ExtractInternalKey()
 			value := memkey.ExtractValue()
-			meta.Largest = internal_key
-			builder.Add(internal_key, value)
+			meta.largest = internal_key
+			builder.add(internal_key, value)
 		}
-		builder.Finish()
-		meta.FileSize = builder.FileSize()
+		builder.finish()
+		meta.fileSize = builder.fileSize()
 	}
 
 	// add meta to version
-	ver.AddFile(0, &meta)
+	ver.addFile(0, &meta)
 
 	return nil
 }
 
 func (db *DB) Close() {
-	// db.mu.Lock()
-	// defer db.mu.Unlock()
-
 	// wait background compaction
 	for db.imm != nil {
 		db.backgroundWorkFinishedSignal.Wait()
@@ -169,11 +162,11 @@ func (db *DB) Recover() {
 		if err != nil {
 			panic("Create db fialed")
 		}
-		db.current = NewVersion(db.dbname)
+		db.current = newVersion(db.dbname)
 		return
 	} else { // recover from last close
-		db.current = NewVersion(db.dbname)
-		file, err := NewLinuxFile(ManifestFileName(db.dbname))
+		db.current = newVersion(db.dbname)
+		file, err := NewLinuxFile(manifestFileName(db.dbname))
 		if err != nil {
 			panic("Recover failed")
 		}
@@ -183,19 +176,19 @@ func (db *DB) Recover() {
 		}
 		db.currentLogFileNumber = DecodeFixed64(data)
 		db.recoverMemTable()
-		db.current.DecodeFrom(data[8:])
+		db.current.decodeFrom(data[8:])
 	}
 }
 
 func (db *DB) saveManifestFile() error {
-	file, err := NewLinuxFile(ManifestFileName(db.dbname))
+	file, err := NewLinuxFile(manifestFileName(db.dbname))
 	if err != nil {
 		return err
 	}
 
 	p := make([]byte, 8)
 	EncodeFixed64(p, db.currentLogFileNumber)
-	manifestContent := db.current.EncodeTo()
+	manifestContent := db.current.encodeTo()
 	p = append(p, manifestContent...)
 	file.Append(string(p))
 	file.Flush()
@@ -208,39 +201,39 @@ func (db *DB) switchToNewMemTable() error {
 	db.imm = db.mem
 
 	// new write ahead log
-	db.currentLogFileNumber = db.current.NextFileNumber
-	db.current.NextFileNumber++
-	LogPath := LogFileName(db.dbname, db.currentLogFileNumber)
+	db.currentLogFileNumber = db.current.nextFileNumber
+	db.current.nextFileNumber++
+	LogPath := walFileName(db.dbname, db.currentLogFileNumber)
 	logFile, err := NewLinuxFile(LogPath)
 	if err != nil {
 		return err
 	}
-	db.logWriter = NewLogWriter(logFile)
+	db.logWriter = newWALWriter(logFile)
 
 	// new memtable
-	db.mem = NewMemTable(LogPath)
+	db.mem = newMemTable(LogPath)
 
 	return nil
 }
 
 func (db *DB) recoverMemTable() error {
-	logPath := LogFileName(db.dbname, db.currentLogFileNumber)
+	logPath := walFileName(db.dbname, db.currentLogFileNumber)
 	file, err := NewLinuxFile(logPath)
 	if err != nil {
 		return err
 	}
-	db.mem = NewMemTable(logPath)
-	reader := NewLogReader(file)
+	db.mem = newMemTable(logPath)
+	reader := newWALReader(file)
 	for {
-		record, err := reader.ReadRecord()
+		record, err := reader.readRecord()
 		if err != nil {
 			break
 		}
 		memkey := KVEntry(record)
-		db.mem.Add(memkey.ExtractInternalKey().ExtractSequenceNumber(),
+		db.mem.add(memkey.ExtractInternalKey().ExtractSequenceNumber(),
 			memkey.ExtractInternalKey().ExtractValueType(),
 			memkey.ExtractInternalKey().ExtractUserKey(), memkey.ExtractValue())
 	}
-	db.logWriter = NewLogWriter(file)
+	db.logWriter = newWALWriter(file)
 	return nil
 }

@@ -1,20 +1,20 @@
 package goleveldb
 
-type MemTable struct {
+type memTable struct {
 	table       *SkipList
 	memoryUsage uint64
 	logPath     string
 }
 
-func NewMemTable(logPath string) *MemTable {
-	var memtable MemTable
+func newMemTable(logPath string) *memTable {
+	var memtable memTable
 	memtable.table = New()
 	memtable.memoryUsage = 0
 	memtable.logPath = logPath
 	return &memtable
 }
 
-func (mem *MemTable) Add(seq SequenceNumber, valueType ValueType, key, value []byte) {
+func (mem *memTable) add(seq SequenceNumber, valueType ValueType, key, value []byte) {
 	// construct memtable key
 	memkey := NewKVEntry(seq, valueType, key, value)
 	// insert into memiplist
@@ -22,7 +22,7 @@ func (mem *MemTable) Add(seq SequenceNumber, valueType ValueType, key, value []b
 	mem.memoryUsage += uint64(len(memkey))
 }
 
-func (mem *MemTable) Get(key LookupKey) ([]byte, bool) {
+func (mem *memTable) get(key LookupKey) ([]byte, bool) {
 	iter := mem.table.NewIterator()
 	iter.Seek([]byte(key))
 	if iter.Valid() {
@@ -40,14 +40,14 @@ func (mem *MemTable) Get(key LookupKey) ([]byte, bool) {
 	return nil, false
 }
 
-func (mem *MemTable) ApproximateMemoryUsage() uint64 {
+func (mem *memTable) approximateMemoryUsage() uint64 {
 	return mem.memoryUsage
 }
 
-func (mem *MemTable) Iterator() Iterator {
+func (mem *memTable) iterator() Iterator {
 	return mem.table.NewIterator()
 }
 
-func (mem *MemTable) GetLogPath() string {
+func (mem *memTable) getLogPath() string {
 	return mem.logPath
 }

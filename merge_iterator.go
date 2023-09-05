@@ -1,44 +1,44 @@
 package goleveldb
 
-type MergeIterator struct {
-	list    []*SSTableIterator
-	current *SSTableIterator
+type mergeIterator struct {
+	list    []*sstableIterator
+	current *sstableIterator
 }
 
-func NewMergeIterator(list []*SSTableIterator) *MergeIterator {
-	var iter MergeIterator
+func newMergeIterator(list []*sstableIterator) *mergeIterator {
+	var iter mergeIterator
 	iter.list = list
 	return &iter
 }
 
-func (iter *MergeIterator) Valid() bool {
+func (iter *mergeIterator) valid() bool {
 	return iter.current != nil && iter.current.Valid()
 }
 
-func (iter *MergeIterator) InternalKey() InternalKey {
+func (iter *mergeIterator) internalKey() InternalKey {
 	return iter.current.Key()
 }
 
-func (iter *MergeIterator) Value() []byte {
+func (iter *mergeIterator) value() []byte {
 	return iter.current.Value()
 }
 
-func (iter *MergeIterator) Next() {
+func (iter *mergeIterator) next() {
 	if iter.current != nil {
 		iter.current.Next()
 	}
 	iter.findSmallest()
 }
 
-func (iter *MergeIterator) SeekToFirst() {
+func (iter *mergeIterator) seekToFirst() {
 	for i := 0; i < len(iter.list); i++ {
 		iter.list[i].SeekToFirst()
 	}
 	iter.findSmallest()
 }
 
-func (iter *MergeIterator) findSmallest() {
-	var smallest *SSTableIterator = nil
+func (iter *mergeIterator) findSmallest() {
+	var smallest *sstableIterator = nil
 	for i := 0; i < len(iter.list); i++ {
 		if iter.list[i].Valid() {
 			if smallest == nil {
