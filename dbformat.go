@@ -15,8 +15,6 @@ const (
 
 	// Maximum number of level-0 files.  We stop writes at this point.
 	L0_StopWritesTrigger uint32 = 12
-
-	MaxFileSize uint32 = 2 << 20
 )
 
 // UserKey is only used for DB to interact with users

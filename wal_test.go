@@ -41,7 +41,7 @@ func Test_wal1(t *testing.T) {
 	records := [][]byte{record_a, record_b, record_c}
 
 	// write log
-	log_writer := newWALWriter(file)
+	log_writer := newWALWriter(file, false)
 	for i := 0; i < len(records); i++ {
 		err = log_writer.addRecord(records[i])
 		if err != nil {
@@ -88,7 +88,7 @@ func Test_wal2(t *testing.T) {
 	records := [][]byte{record_a, record_b, record_c}
 
 	// write log
-	log_writer := newWALWriter(file)
+	log_writer := newWALWriter(file, false)
 	for i := 0; i < len(records); i++ {
 		err = log_writer.addRecord(records[i])
 		if err != nil {

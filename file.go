@@ -6,8 +6,8 @@ import (
 
 type WritableFile interface {
 	Append(data string) error
-	Close()
-	Sync()
+	Close() error
+	Sync() error
 }
 
 type RandomAccessFile interface {
@@ -36,12 +36,12 @@ func (lf *LinuxFile) Append(data string) error {
 	return nil
 }
 
-func (lf *LinuxFile) Close() {
-	lf.file.Close()
+func (lf *LinuxFile) Close() error {
+	return lf.file.Close()
 }
 
-func (lf *LinuxFile) Sync() {
-	lf.file.Sync()
+func (lf *LinuxFile) Sync() error {
+	return lf.file.Sync()
 }
 
 var _ WritableFile = (*LinuxFile)(nil)

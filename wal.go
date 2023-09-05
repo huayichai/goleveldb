@@ -69,11 +69,13 @@ func (reader *walReader) readPhysicalRecord() ([]byte, error) {
 type walWriter struct {
 	dest        WritableFile
 	blockOffset uint32
+	sync        bool
 }
 
-func newWALWriter(dest WritableFile) *walWriter {
+func newWALWriter(dest WritableFile, sync bool) *walWriter {
 	return &walWriter{
 		dest:        dest,
+		sync:        false,
 		blockOffset: 0,
 	}
 }
@@ -147,7 +149,22 @@ func (writer *walWriter) emitPhysicalRecord(t recordType, ptr []byte, length uin
 	if err != nil {
 		return err
 	}
-	// writer.dest.Sync()
+	if writer.sync {
+		if err = writer.syncWrites(); err != nil {
+			return err
+		}
+	}
 	writer.blockOffset += (kHeaderSize + length)
 	return nil
+}
+
+func (writer *walWriter) syncWrites() error {
+	return writer.dest.Sync()
+}
+
+func (writer *walWriter) close() error {
+	if err := writer.syncWrites(); err != nil {
+		return err
+	}
+	return writer.dest.Close()
 }

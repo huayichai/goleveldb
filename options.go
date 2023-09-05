@@ -1,29 +1,53 @@
 package goleveldb
 
 type Options struct {
-	// If true, the database will be created if it is missing.
-	Create_if_missing bool
+	// DirPath specifies the directory path where all the database files will be stored.
+	DirPath string
 
-	// -------------------
-	// Parameters that affect performance
-
-	// Amount of data to build up in memory (backed by an unsorted log
-	// on disk) before converting to a sorted on-disk file.
+	// Sync is whether to synchronize writes through os buffer cache and down onto the actual disk.
+	// Setting sync is required for durability of a single write operation, but also results in slower writes.
 	//
-	// Larger values increase performance, especially during bulk loads.
-	// Up to two write buffers may be held in memory at the same time,
-	// so you may wish to adjust this parameter to control memory usage.
-	// Also, a larger write buffer will result in a longer recovery time
-	// the next time the database is opened.
-	Write_buffer_size uint32
+	// If false, and the machine crashes, then some recent writes may be lost.
+	// Note that if it is just the process that crashes (machine does not) then no writes will be lost.
+	//
+	// In other words, Sync being false has the same semantics as a write
+	// system call. Sync being true means write followed by fsync.
+	Sync bool
 
+	// MemtableSize represents the maximum size in bytes for a memtable.
+	// It means that each memtable will occupy so much memory.
+	// Default value is 64MB.
+	MemTableSize uint32
+
+	// BlockSize represents the threshold size of data block in sstable.
+	// For every data block, largest key will be inserted into index block.
+	// So, small blocksize means more index entry, and lower point query latency.
+	// Default value is 4KB
 	BlockSize uint32
+
+	// MaxFileSize represents the threshold size of sstable file.
+	// When process goleveldb.doCompaction(), any sstable which size exceed MaxFileSize will be write to disk immedliately,
+	// and a new sstable building process begin.
+	// Default value is 128MB
+	MaxFileSize uint32
 }
 
-func NewOptions() *Options {
+const (
+	B  = 1
+	KB = 1024 * B
+	MB = 1024 * KB
+	GB = 1024 * MB
+)
+
+// DefaultOptions sets a list of recommended options for good performance.
+// Feel free to modify these to suit your needs with the WithX methods.
+func DefaultOptions() *Options {
 	var option Options
-	option.Create_if_missing = false
-	option.Write_buffer_size = 4 * 1024 * 1024
-	option.BlockSize = 4 * 1024
+	option.DirPath = "/goleveldb_tempdb/"
+	option.Sync = false
+
+	option.MemTableSize = 64 * MB
+	option.BlockSize = 4 * KB
+	option.MaxFileSize = 128 * MB
 	return &option
 }

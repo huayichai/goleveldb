@@ -8,7 +8,6 @@ import (
 
 type DB struct {
 	// Constant after construction
-	dbname string // As root dir name
 	option Options
 
 	mem *memTable // Memtable
@@ -25,10 +24,9 @@ type DB struct {
 	backgroundWorkFinishedSignal *sync.Cond
 }
 
-func Open(option Options, name string) (*DB, error) {
+func Open(option Options) (*DB, error) {
 	var db DB
 	var err error
-	db.dbname = name
 	db.option = option
 	db.backgroundCompactionScheduled = false
 
@@ -92,7 +90,7 @@ func (db *DB) makeRoomForWrite() error {
 		if db.current.numLevelFiles(0) >= L0_SlowdownWritesTrigger {
 			time.Sleep(time.Duration(1) * time.Second)
 			db.maybeScheduleCompaction()
-		} else if db.mem.approximateMemoryUsage() < uint64(db.option.Write_buffer_size) {
+		} else if db.mem.approximateMemoryUsage() < uint64(db.option.MemTableSize) {
 			// There is room in current memtable
 			return nil
 		} else if db.imm != nil {
@@ -101,7 +99,9 @@ func (db *DB) makeRoomForWrite() error {
 			db.backgroundWorkFinishedSignal.Wait() // will release the mutex 'db.mu'
 		} else {
 			// Attempt to switch to a new memtable and trigger compaction of old
-			db.switchToNewMemTable()
+			if err := db.switchToNewMemTable(); err != nil {
+				return err
+			}
 			db.maybeScheduleCompaction()
 		}
 	}
@@ -114,7 +114,7 @@ func (db *DB) writeLevel0Table(imm *memTable, ver *version) error {
 
 	// file
 	ver.nextFileNumber++
-	filename := sstableFileName(db.dbname, meta.number)
+	filename := sstableFileName(db.option.DirPath, meta.number)
 	file, err := NewLinuxFile(filename)
 	if err != nil {
 		return err
@@ -163,17 +163,18 @@ func (db *DB) Close() error {
 
 func (db *DB) Recover() error {
 	db.mem, db.imm = nil, nil
-	_, err := os.Stat(db.dbname)
+	dbpath := db.option.DirPath
+	_, err := os.Stat(dbpath)
 	// db not exist
 	if err != nil && os.IsNotExist(err) {
-		if err = os.MkdirAll(db.dbname, 0755); err != nil {
+		if err = os.MkdirAll(dbpath, 0755); err != nil {
 			return err
 		}
-		db.current = newVersion(db.dbname)
+		db.current = newVersion(dbpath)
 		return nil
 	} else { // recover from last close
-		db.current = newVersion(db.dbname)
-		file, err := NewLinuxFile(manifestFileName(db.dbname))
+		db.current = newVersion(dbpath)
+		file, err := NewLinuxFile(manifestFileName(dbpath))
 		if err != nil {
 			return err
 		}
@@ -189,7 +190,7 @@ func (db *DB) Recover() error {
 }
 
 func (db *DB) saveManifestFile() error {
-	file, err := NewLinuxFile(manifestFileName(db.dbname))
+	file, err := NewLinuxFile(manifestFileName(db.option.DirPath))
 	if err != nil {
 		return err
 	}
@@ -208,15 +209,22 @@ func (db *DB) switchToNewMemTable() error {
 	// switch mem to imm
 	db.imm = db.mem
 
+	// close old wal file
+	if db.logWriter != nil {
+		if err := db.logWriter.close(); err != nil {
+			return err
+		}
+	}
+
 	// new write ahead log
 	db.currentLogFileNumber = db.current.nextFileNumber
 	db.current.nextFileNumber++
-	LogPath := walFileName(db.dbname, db.currentLogFileNumber)
+	LogPath := walFileName(db.option.DirPath, db.currentLogFileNumber)
 	logFile, err := NewLinuxFile(LogPath)
 	if err != nil {
 		return err
 	}
-	db.logWriter = newWALWriter(logFile)
+	db.logWriter = newWALWriter(logFile, db.option.Sync)
 
 	// new memtable
 	db.mem = newMemTable(LogPath)
@@ -225,7 +233,7 @@ func (db *DB) switchToNewMemTable() error {
 }
 
 func (db *DB) recoverMemTable() error {
-	logPath := walFileName(db.dbname, db.currentLogFileNumber)
+	logPath := walFileName(db.option.DirPath, db.currentLogFileNumber)
 	file, err := NewLinuxFile(logPath)
 	if err != nil {
 		return err
@@ -242,6 +250,6 @@ func (db *DB) recoverMemTable() error {
 			memkey.ExtractInternalKey().ExtractValueType(),
 			memkey.ExtractInternalKey().ExtractUserKey(), memkey.ExtractValue())
 	}
-	db.logWriter = newWALWriter(file)
+	db.logWriter = newWALWriter(file, db.option.Sync)
 	return nil
 }

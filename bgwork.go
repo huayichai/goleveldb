@@ -62,7 +62,7 @@ func (db *DB) doCompaction(c *compaction) error {
 		var meta fileMetaData
 		meta.number = db.current.nextFileNumber
 		db.current.nextFileNumber++
-		file, err := NewLinuxFile(sstableFileName(db.dbname, meta.number))
+		file, err := NewLinuxFile(sstableFileName(db.option.DirPath, meta.number))
 		if err != nil {
 			return err
 		}
@@ -83,7 +83,7 @@ func (db *DB) doCompaction(c *compaction) error {
 			prev_user_key = current_user_key
 			meta.largest = current_user_key
 			builder.add(internal_key, iter.value())
-			if builder.fileSize() > uint64(MaxFileSize) {
+			if builder.fileSize() > uint64(db.option.MaxFileSize) {
 				break
 			}
 		}
@@ -108,7 +108,7 @@ func (db *DB) makeInputIterator(c *compaction) (*mergeIterator, error) {
 	list := make([]*sstableIterator, 0)
 	for i := 0; i < 2; i++ {
 		for j := 0; j < len(c.inputs[i]); j++ {
-			file, err := NewLinuxFile(sstableFileName(db.dbname, c.inputs[i][j].number))
+			file, err := NewLinuxFile(sstableFileName(db.option.DirPath, c.inputs[i][j].number))
 			if err != nil {
 				return nil, err
 			}

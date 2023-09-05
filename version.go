@@ -124,10 +124,13 @@ func (v *version) get(internal_key InternalKey) ([]byte, error) {
 				return nil, err
 			}
 			value, err := sstable.get(internal_key)
-			if err != nil {
-				return nil, err
+			if err == nil {
+				return value, nil
 			}
-			return value, nil
+			if err == ErrKeyNotFound {
+				continue
+			}
+			return nil, err
 		}
 	}
 	return nil, ErrKeyNotFound
