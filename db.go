@@ -11,8 +11,8 @@ type DB struct {
 	dbname string // As root dir name
 	option Options
 
-	mem MemTable // Memtable
-	imm MemTable // Memtable being compacted
+	mem *MemTable // Memtable
+	imm *MemTable // Memtable being compacted
 
 	currentLogFileNumber uint64
 	logWriter            *LogWriter
@@ -106,7 +106,7 @@ func (db *DB) makeRoomForWrite() error {
 	}
 }
 
-func (db *DB) writeLevel0Table(imm MemTable, ver *Version) error {
+func (db *DB) writeLevel0Table(imm *MemTable, ver *Version) error {
 	// FileMetaData
 	var meta FileMetaData
 	meta.Number = ver.NextFileNumber
