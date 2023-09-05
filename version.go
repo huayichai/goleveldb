@@ -57,7 +57,7 @@ func (v *Version) AddFile(level int, meta *FileMetaData) {
 		v.Files[level] = append(v.Files[level], meta)
 	} else {
 		numFiles := len(v.Files[level])
-		index := v.findFile(v.Files[level], meta.Smallest)
+		index := v.findFile(v.Files[level], meta.Smallest.ExtractUserKey())
 		if index >= numFiles {
 			v.Files[level] = append(v.Files[level], meta)
 		} else {
@@ -91,7 +91,7 @@ func (v *Version) Get(internal_key InternalKey) ([]byte, error) {
 		if level == 0 {
 			for idx := 0; idx < numFiles; idx++ {
 				meta := v.Files[level][idx]
-				if UserKeyCompare(meta.Smallest.ExtractUserKey(), user_key) <= 0 && Compare(meta.Largest.ExtractUserKey(), user_key) >= 0 {
+				if UserKeyCompare(meta.Smallest.ExtractUserKey(), user_key) <= 0 && UserKeyCompare(meta.Largest.ExtractUserKey(), user_key) >= 0 {
 					filemetas = append(filemetas, meta)
 				}
 			}
@@ -169,7 +169,8 @@ func (v *Version) DecodeFrom(data []byte) {
 	}
 }
 
-func (v *Version) findFile(metas []*FileMetaData, user_key []byte) int {
+// Find the first file which largest key >= userkey
+func (v *Version) findFile(metas []*FileMetaData, user_key UserKey) int {
 	left := 0
 	right := len(metas)
 	for left < right {

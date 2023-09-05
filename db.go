@@ -38,7 +38,6 @@ func Open(option Options, name string) *DB {
 		if err = db.switchToNewMemTable(); err != nil {
 			panic("create log file fialed")
 		}
-
 	}
 
 	db.backgroundWorkFinishedSignal = sync.NewCond(&db.mu)
@@ -51,12 +50,10 @@ func (db *DB) Put(key, value []byte) error {
 		return err
 	}
 
-	// db.mu.Lock()
 	seq := db.current.LastSequence
 	db.current.LastSequence++
-	// db.mu.Unlock()
 
-	if err := db.logWriter.AddRecord([]byte(NewMemTableKey(seq, KTypeValue, key, value))); err != nil {
+	if err := db.logWriter.AddRecord([]byte(NewKVEntry(seq, KTypeValue, key, value))); err != nil {
 		panic("wal write failed")
 	}
 	db.mem.Add(seq, KTypeValue, key, value)
@@ -64,12 +61,10 @@ func (db *DB) Put(key, value []byte) error {
 }
 
 func (db *DB) Get(key []byte) ([]byte, error) {
-	// db.mu.Lock()
 	snapshot := db.current.LastSequence
 	mem := db.mem
 	imm := db.imm
 	current := db.current
-	// db.mu.Unlock()
 
 	lookup_key := NewLookupKey(key, snapshot)
 	v, ok := mem.Get(lookup_key)
@@ -130,10 +125,10 @@ func (db *DB) writeLevel0Table(imm MemTable, ver *Version) error {
 	iter := imm.Iterator()
 	iter.SeekToFirst()
 	if iter.Valid() {
-		memkey := MemTableKey(iter.Key())
+		memkey := KVEntry(iter.Key())
 		meta.Smallest = memkey.ExtractInternalKey()
 		for ; iter.Valid(); iter.Next() {
-			memkey = MemTableKey(iter.Key())
+			memkey = KVEntry(iter.Key())
 			internal_key := memkey.ExtractInternalKey()
 			value := memkey.ExtractValue()
 			meta.Largest = internal_key
@@ -241,7 +236,7 @@ func (db *DB) recoverMemTable() error {
 		if err != nil {
 			break
 		}
-		memkey := MemTableKey(record)
+		memkey := KVEntry(record)
 		db.mem.Add(memkey.ExtractInternalKey().ExtractSequenceNumber(),
 			memkey.ExtractInternalKey().ExtractValueType(),
 			memkey.ExtractInternalKey().ExtractUserKey(), memkey.ExtractValue())

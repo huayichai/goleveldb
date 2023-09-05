@@ -18,6 +18,9 @@ const (
 	MaxFileSize uint32 = 2 << 20
 )
 
+// UserKey is only used for DB to interact with users
+// InternalKey is used for DB internal operations
+
 type ValueType uint8
 
 const (
@@ -27,10 +30,14 @@ const (
 
 type SequenceNumber uint64
 
-func UserKeyCompare(a, b []byte) int {
+// UserKey | orignal key |
+type UserKey []byte
+
+func UserKeyCompare(a, b UserKey) int {
 	return bytes.Compare(a, b)
 }
 
+// InternalKey = UserKey + SequenceNumber + Type
 // | user_key | (sequence_number + type)(8B) |
 type InternalKey []byte
 
@@ -59,8 +66,8 @@ func PackSequenceAndType(seq SequenceNumber, t ValueType) uint64 {
 	return uint64(seq<<8) | uint64(t)
 }
 
-func (ik InternalKey) ExtractUserKey() []byte {
-	return ik[0 : len(ik)-8]
+func (ik InternalKey) ExtractUserKey() UserKey {
+	return UserKey(ik[0 : len(ik)-8])
 }
 
 func (ik InternalKey) ExtractSequenceNumber() SequenceNumber {
@@ -74,6 +81,7 @@ func (ik InternalKey) ExtractValueType() ValueType {
 	return ValueType(t)
 }
 
+// LookupKey = UserKeySize + InternalKey
 // | user_key_size(4B) | user_key | (sequence_number + type)(8B) |
 type LookupKey []byte
 
@@ -92,19 +100,20 @@ func (lk LookupKey) ExtractInternalKey() InternalKey {
 	return InternalKey(lk[4 : 4+user_key_size+8])
 }
 
-func (lk LookupKey) ExtractUserKey() []byte {
+func (lk LookupKey) ExtractUserKey() UserKey {
 	user_key_size := DecodeFixed32(lk)
-	return lk[4 : 4+user_key_size]
+	return UserKey(lk[4 : 4+user_key_size])
 }
 
 func LookupKeyCompare(a, b LookupKey) int {
 	return InternalKeyCompare(a.ExtractInternalKey(), b.ExtractInternalKey())
 }
 
+// KVEntry = LookupKey + Value
 // | user_key_size(4B) | user_key | (sequence_number + type)(8B) | value_size(4B) | value |
-type MemTableKey []byte
+type KVEntry []byte
 
-func NewMemTableKey(seq SequenceNumber, valueType ValueType, userKey, value []byte) MemTableKey {
+func NewKVEntry(seq SequenceNumber, valueType ValueType, userKey, value []byte) KVEntry {
 	// Format of an entry is concatenation of:
 	//  key_size     : uint32 of user_key.size()
 	//  key bytes    : byte[user_key.size()]
@@ -134,23 +143,23 @@ func NewMemTableKey(seq SequenceNumber, valueType ValueType, userKey, value []by
 	// encode value
 	copy(p[offset:], value)
 
-	return MemTableKey(p)
+	return KVEntry(p)
 }
 
-func (memkey MemTableKey) ExtractInternalKey() InternalKey {
-	user_key_size := DecodeFixed32(memkey)
+func (entry KVEntry) ExtractInternalKey() InternalKey {
+	user_key_size := DecodeFixed32(entry)
 	internal_key_encode_len := 4 + user_key_size + 8
-	return InternalKey(memkey[4:internal_key_encode_len])
+	return InternalKey(entry[4:internal_key_encode_len])
 }
 
-func (memkey MemTableKey) ExtractValue() []byte {
-	user_key_size := DecodeFixed32(memkey)
+func (entry KVEntry) ExtractValue() []byte {
+	user_key_size := DecodeFixed32(entry)
 	offset := 4 + user_key_size + 8
-	value_size := DecodeFixed32(memkey[offset:])
+	value_size := DecodeFixed32(entry[offset:])
 	offset += 4
-	return memkey[offset : offset+value_size]
+	return entry[offset : offset+value_size]
 }
 
-func MemTableKeyCompare(a, b MemTableKey) int {
+func KVEntryCompare(a, b KVEntry) int {
 	return InternalKeyCompare(a.ExtractInternalKey(), b.ExtractInternalKey())
 }

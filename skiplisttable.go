@@ -16,7 +16,7 @@ func NewSkipListTable(logPath string) *SkipListTable {
 
 func (sk *SkipListTable) Add(seq SequenceNumber, valueType ValueType, key, value []byte) {
 	// construct memtable key
-	memkey := NewMemTableKey(seq, valueType, key, value)
+	memkey := NewKVEntry(seq, valueType, key, value)
 	// insert into skiplist
 	sk.table.Insert([]byte(memkey))
 	sk.memoryUsage += uint64(len(memkey))
@@ -26,7 +26,7 @@ func (sk *SkipListTable) Get(key LookupKey) ([]byte, bool) {
 	iter := sk.table.NewIterator()
 	iter.Seek([]byte(key))
 	if iter.Valid() {
-		memkey := MemTableKey(iter.Key())
+		memkey := KVEntry(iter.Key())
 		internal_key := memkey.ExtractInternalKey()
 		if UserKeyCompare(internal_key.ExtractUserKey(), key.ExtractUserKey()) == 0 {
 			// deleted
