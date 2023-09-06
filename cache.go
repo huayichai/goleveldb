@@ -27,6 +27,10 @@ func (tc *tableCache) get(fileNumber uint64, key InternalKey) ([]byte, error) {
 	return table.get(key)
 }
 
+func (tc *tableCache) evict(fileNumber uint64) bool {
+	return tc.cache.Remove(fileNumber)
+}
+
 func (tc *tableCache) getTable(fileNumber uint64) (*sstable, error) {
 	table, ok := tc.cache.Get(fileNumber)
 	if ok {

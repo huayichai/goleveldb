@@ -69,7 +69,11 @@ func (v *version) addFile(level int, meta *fileMetaData) {
 	}
 }
 
-func (v *version) deleteFile(level int, meta *fileMetaData) {
+// deleteFile remove FileMetaData from version.files[level]
+// If 'disk' is set to true, the file corresponding to 'meta' will be deleted from disk,
+// and evicted from cache.
+// Specifically, when compaction is trivial move, 'disk' should be set to false.
+func (v *version) deleteFile(level int, meta *fileMetaData, disk bool) error {
 	numfiles := len(v.files[level])
 	for i := 0; i < numfiles; i++ {
 		if v.files[level][i].number == meta.number {
@@ -77,6 +81,11 @@ func (v *version) deleteFile(level int, meta *fileMetaData) {
 			break
 		}
 	}
+	if disk {
+		v.cache.evict(meta.number)
+		return RemoveFile(sstableFileName(v.cache.option.DirPath, meta.number))
+	}
+	return nil
 }
 
 func (v *version) get(internal_key InternalKey) ([]byte, error) {

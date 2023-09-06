@@ -47,7 +47,7 @@ const (
 // Feel free to modify these to suit your needs with the WithX methods.
 func DefaultOptions() *Options {
 	var option Options
-	option.DirPath = "/goleveldb_tempdb/"
+	option.DirPath = "/goleveldb_tempdb"
 	option.Sync = false
 
 	option.MemTableSize = 64 * MB

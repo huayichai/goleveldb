@@ -28,7 +28,7 @@ func (db *DB) backgroundCompaction() {
 	if c == nil {
 		// Nothing to do
 	} else if c.isTrivialMove() {
-		db.current.deleteFile(c.level, c.inputs[0][0])
+		db.current.deleteFile(c.level, c.inputs[0][0], false)
 		db.current.addFile(c.level+1, c.inputs[0][0])
 	} else {
 		if err := db.doCompaction(c); err != nil {
@@ -93,10 +93,14 @@ func (db *DB) doCompaction(c *compaction) error {
 	}
 
 	for i := 0; i < len(c.inputs[0]); i++ {
-		db.current.deleteFile(c.level, c.inputs[0][i])
+		if err := db.current.deleteFile(c.level, c.inputs[0][i], true); err != nil {
+			return err
+		}
 	}
 	for i := 0; i < len(c.inputs[1]); i++ {
-		db.current.deleteFile(c.level, c.inputs[1][i])
+		if err = db.current.deleteFile(c.level+1, c.inputs[1][i], true); err != nil {
+			return err
+		}
 	}
 	for i := 0; i < len(list); i++ {
 		db.current.addFile(c.level+1, list[i])
