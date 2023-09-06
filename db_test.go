@@ -8,7 +8,7 @@ import (
 )
 
 func TestDB1(t *testing.T) {
-	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/mydb"
+	path := "/tmp/goleveldb-mydb"
 	os.RemoveAll(path)
 	option := DefaultOptions()
 	option.DirPath = path
@@ -40,7 +40,7 @@ func TestDB1(t *testing.T) {
 }
 
 func TestDB_Recover(t *testing.T) {
-	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/RecoverDB"
+	path := "/tmp/goleveldb-mydb"
 	os.RemoveAll(path)
 	option := DefaultOptions()
 	option.DirPath = path
@@ -71,5 +71,35 @@ func TestDB_Recover(t *testing.T) {
 			t.Fatalf("Expect: %s, but get %s\n", key, v)
 		}
 	}
+	os.RemoveAll(path)
+}
+
+func TestDB2(t *testing.T) {
+	path := "/tmp/goleveldb-mydb"
+	os.RemoveAll(path)
+	option := DefaultOptions()
+	option.DirPath = path
+
+	db, _ := Open(*option)
+
+	for i := 0; i < 10000; i++ {
+		key := fmt.Sprintf("TestKey%09d", i)
+		value := fmt.Sprintf("TestValue%09d", i)
+		db.Put([]byte(key), []byte(value))
+	}
+
+	for i := 0; i < 10000; i++ {
+		key := fmt.Sprintf("TestKey%09d", i)
+		value := fmt.Sprintf("TestValue%09d", i)
+		v, err := db.Get([]byte(key))
+		if err != nil {
+			t.Fatalf("lookup: %s err. %s\n", key, err.Error())
+		}
+		if value != string(v) {
+			t.Fatalf("Expect: %s, but get %s\n", key, v)
+		}
+	}
+
+	db.Close()
 	os.RemoveAll(path)
 }

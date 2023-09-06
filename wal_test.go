@@ -28,7 +28,7 @@ func GenerateSameBytes(l int, b byte) []byte {
 }
 
 func Test_wal1(t *testing.T) {
-	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/wal"
+	path := "/tmp/goleveldb-wal"
 	os.RemoveAll(path)
 	file, err := NewLinuxFile(path)
 	if err != nil {
@@ -75,7 +75,7 @@ func Test_wal1(t *testing.T) {
 }
 
 func Test_wal2(t *testing.T) {
-	path := "/home/ubuntu/huayichai/MyToyCode/goleveldb/data/wal"
+	path := "/tmp/goleveldb-wal"
 	os.RemoveAll(path)
 	file, err := NewLinuxFile(path)
 	if err != nil {
