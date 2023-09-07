@@ -2,6 +2,7 @@ package goleveldb
 
 import (
 	"encoding/binary"
+	"log"
 	"sort"
 )
 
@@ -67,6 +68,9 @@ func (v *version) addFile(level int, meta *fileMetaData) {
 			v.files[level] = append(tmp, v.files[level][index:]...)
 		}
 	}
+	if Debug {
+		log.Printf("doCompaction add level %d file %d [smallest %s, largest %s]\n", level, meta.number, meta.smallest, meta.largest)
+	}
 }
 
 // deleteFile remove FileMetaData from version.files[level]
@@ -84,6 +88,9 @@ func (v *version) deleteFile(level int, meta *fileMetaData, disk bool) error {
 	if disk {
 		v.cache.evict(meta.number)
 		return RemoveFile(sstableFileName(v.cache.option.DirPath, meta.number))
+	}
+	if Debug {
+		log.Printf("doCompaction remove level %d file %d [smallest %s, largest %s]\n", level, meta.number, meta.smallest, meta.largest)
 	}
 	return nil
 }
@@ -127,8 +134,9 @@ func (v *version) get(internal_key InternalKey) ([]byte, error) {
 			value, err := v.cache.get(filemetas[idx].number, internal_key)
 			if err == nil {
 				return value, nil
-			}
-			if err == ErrKeyNotFound {
+			} else if err == errKeyDeleted {
+				return nil, ErrKeyNotFound
+			} else if err == ErrKeyNotFound {
 				continue
 			}
 			return nil, err

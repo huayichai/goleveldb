@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+var Debug bool = false
+
 type DB struct {
 	// Constant after construction
 	option Options
@@ -55,8 +57,6 @@ func Open(option Options) (*DB, error) {
 }
 
 func (db *DB) Put(key, value []byte) error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
 	if err := db.makeRoomForWrite(); err != nil {
 		return err
 	}
@@ -72,20 +72,25 @@ func (db *DB) Put(key, value []byte) error {
 }
 
 func (db *DB) Get(key []byte) ([]byte, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	snapshot := db.current.lastSequence
 	mem := db.mem
 	imm := db.imm
 	current := db.current
 
 	lookup_key := NewLookupKey(key, snapshot)
-	v, ok := mem.get(lookup_key)
-	if ok {
+	v, status := mem.get(lookup_key)
+	if status == nil {
 		return v, nil
-	}
-	if imm != nil {
-		v, ok = imm.get(lookup_key)
-		if ok {
+	} else if status == errKeyDeleted {
+		return nil, ErrKeyNotFound
+	} else if imm != nil {
+		v, status = imm.get(lookup_key)
+		if status == nil {
 			return v, nil
+		} else if status == errKeyDeleted {
+			return nil, ErrKeyNotFound
 		}
 	}
 
@@ -93,10 +98,29 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	return value, err
 }
 
+func (db *DB) Delete(key []byte) error {
+	if err := db.makeRoomForWrite(); err != nil {
+		return err
+	}
+
+	seq := db.current.lastSequence
+	db.current.lastSequence++
+
+	if err := db.logWriter.addRecord([]byte(NewKVEntry(seq, KTypeDeletion, key, []byte{}))); err != nil {
+		return err
+	}
+	db.mem.add(seq, KTypeDeletion, key, []byte{})
+	return nil
+}
+
 func (db *DB) makeRoomForWrite() error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	for {
 		if db.current.numLevelFiles(0) >= L0_SlowdownWritesTrigger {
+			db.mu.Unlock()
 			time.Sleep(time.Duration(1) * time.Second)
+			db.mu.Lock()
 			db.maybeScheduleCompaction()
 		} else if db.mem.approximateMemoryUsage() < uint64(db.option.MemTableSize) {
 			// There is room in current memtable
@@ -149,7 +173,6 @@ func (db *DB) writeLevel0Table(imm *memTable, ver *version) error {
 
 	// add meta to version
 	ver.addFile(0, &meta)
-
 	return nil
 }
 

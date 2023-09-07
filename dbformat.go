@@ -132,7 +132,7 @@ func NewKVEntry(seq SequenceNumber, valueType ValueType, userKey, value []byte) 
 	// encode internal_key
 	copy(p[offset:], userKey) // key
 	offset += int(user_key_size)
-	EncodeFixed64(p[offset:], PackSequenceAndType(seq, KTypeValue)) // tag
+	EncodeFixed64(p[offset:], PackSequenceAndType(seq, valueType)) // tag
 	offset += 8
 
 	// encode value_size

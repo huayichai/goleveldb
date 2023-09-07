@@ -319,14 +319,23 @@ func (table *sstable) close() error {
 // and then search by sequential traversal.
 func (table *sstable) get(key InternalKey) ([]byte, error) {
 	// search in index block
+	var offset uint32
 	_, pos_bytes, err := table.indexblock.get(0, key)
 	if err != nil {
 		return nil, err
+	} else {
+		offset = DecodeFixed32(pos_bytes)
 	}
-	offset := DecodeFixed32(pos_bytes)
 
 	// search in data block
-	_, v, err := table.datablock.get(offset, key)
+	k, v, err := table.datablock.get(offset, key)
+	if err != nil {
+		return nil, err
+	} else if UserKeyCompare(InternalKey(k).ExtractUserKey(), key.ExtractUserKey()) != 0 {
+		return nil, ErrKeyNotFound
+	} else if InternalKey(k).ExtractValueType() == KTypeDeletion {
+		return nil, errKeyDeleted
+	}
 	return v, err
 }
 

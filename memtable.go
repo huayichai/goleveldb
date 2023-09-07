@@ -22,22 +22,25 @@ func (mem *memTable) add(seq SequenceNumber, valueType ValueType, key, value []b
 	mem.memoryUsage += uint64(len(memkey))
 }
 
-func (mem *memTable) get(key LookupKey) ([]byte, bool) {
+// Return value, status
+// status = ErrKeyNotFound means key not in memtable
+// status = errKeyDeleted  means key was been deleted
+// status = nil            menas find key and return value
+func (mem *memTable) get(key LookupKey) ([]byte, error) {
 	iter := mem.table.NewIterator()
 	iter.Seek([]byte(key))
 	if iter.Valid() {
 		memkey := KVEntry(iter.Key())
 		internal_key := memkey.ExtractInternalKey()
 		if UserKeyCompare(internal_key.ExtractUserKey(), key.ExtractUserKey()) == 0 {
-			// deleted
 			if internal_key.ExtractValueType() == KTypeDeletion {
-				return nil, false
+				return nil, errKeyDeleted
+			} else {
+				return memkey.ExtractValue(), nil
 			}
-			// extract value
-			return memkey.ExtractValue(), true
 		}
 	}
-	return nil, false
+	return nil, ErrKeyNotFound
 }
 
 func (mem *memTable) approximateMemoryUsage() uint64 {
