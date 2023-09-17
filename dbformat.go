@@ -8,7 +8,8 @@ import (
 const (
 	NumLevels uint32 = 7
 
-	L0_CompactionTrigger uint32 = 4
+	L0_CompactionTrigger      uint32  = 4
+	L_Other_CompactionTrigger float64 = 0.8
 
 	// Level-0 compaction is started when we hit this many files.
 	L0_SlowdownWritesTrigger uint32 = 8

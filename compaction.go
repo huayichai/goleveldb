@@ -43,10 +43,14 @@ func (v *version) pickCompaction() *compaction {
 
 func (v *version) pickCompactionLevel() (int, float64) {
 	best_level := -1
-	best_score := -1.0
+	best_score := 0.0
 	for level := 0; level < int(NumLevels-1); level++ {
 		var score float64
+		file_num := len(v.files[level])
 		if level == 0 {
+			if file_num == 0 {
+				continue
+			}
 			// We treat level-0 specially by bounding the number of files
 			// instead of number of bytes for two reasons:
 			//
@@ -58,9 +62,14 @@ func (v *version) pickCompactionLevel() (int, float64) {
 			// file size is small (perhaps because of a small write-buffer
 			// setting, or very high compression ratios, or lots of
 			// overwrites/deletions).
-			score = float64(len(v.files[level])) / float64(L0_CompactionTrigger)
+			score = float64(file_num) / float64(L0_CompactionTrigger)
 		} else {
-			score = float64(totalFileSize(v.files[level])) / maxBytesForLevel(level)
+			if file_num == 0 {
+				break
+			}
+			if tmp_score := float64(file_num) / maxBytesForLevel(level); tmp_score > L_Other_CompactionTrigger {
+				score = tmp_score
+			}
 		}
 		if score > best_score {
 			best_level = level

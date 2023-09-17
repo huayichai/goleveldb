@@ -1,43 +1,35 @@
 package goleveldb
 
-func (db *DB) maybeScheduleCompaction() {
-	if db.backgroundCompactionScheduled {
-		return
-	}
-	db.backgroundCompactionScheduled = true
-	go db.backgroundCall()
-}
-
-func (db *DB) backgroundCall() {
-	db.backgroundCompaction()
-
-	db.backgroundCompactionScheduled = false
-
-	db.backgroundWorkFinishedSignal.Broadcast()
-}
+import (
+	"time"
+)
 
 func (db *DB) backgroundCompaction() {
-	if db.imm != nil {
-		if err := db.compactMemTable(); err != nil {
+	interval := db.option.CompactionInterval
+	timer := time.NewTimer(time.Millisecond * time.Duration(interval))
+	var err error
+	for {
+		select {
+		case <-db.dbCloseCh:
+			return
+		case <-db.immExistCh:
+			err = db.compactMemTable()
+		case <-timer.C:
+			err = db.maybeScheduleCompaction()
+		}
+		if err != nil {
 			panic(err.Error())
 		}
-		return
-	}
-
-	c := db.current.pickCompaction()
-	if c == nil {
-		// Nothing to do
-	} else if c.isTrivialMove() {
-		db.current.deleteFile(c.level, c.inputs[0][0], false)
-		db.current.addFile(c.level+1, c.inputs[0][0])
-	} else {
-		if err := db.doCompaction(c); err != nil {
-			panic(err.Error())
-		}
+		timer.Reset(time.Millisecond * time.Duration(interval))
 	}
 }
 
 func (db *DB) compactMemTable() error {
+	db.muCompaction.Lock()
+	defer db.muCompaction.Unlock()
+	if db.imm == nil {
+		return nil
+	}
 	if err := db.writeLevel0Table(db.imm, db.current); err != nil {
 		return err
 	}
@@ -45,6 +37,26 @@ func (db *DB) compactMemTable() error {
 	db.imm = nil
 	if err := RemoveFile(wal_path); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (db *DB) maybeScheduleCompaction() error {
+	db.muCompaction.Lock()
+	defer db.muCompaction.Unlock()
+	if db.imm != nil {
+		return db.compactMemTable()
+	}
+	c := db.current.pickCompaction()
+	if c == nil {
+		return nil
+	} else if c.isTrivialMove() {
+		db.current.deleteFile(c.level, c.inputs[0][0], false)
+		db.current.addFile(c.level+1, c.inputs[0][0])
+	} else {
+		if err := db.doCompaction(c); err != nil {
+			return err
+		}
 	}
 	return nil
 }

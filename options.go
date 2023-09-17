@@ -34,6 +34,10 @@ type Options struct {
 	// MaxOpenFiles is the lru cache capacity.
 	// Default value is 2GB / MaxFileSize
 	MaxOpenFiles uint32
+
+	// CompactionInterval indicates the time interval for periodic comparison in the background.
+	// Unit is MilliSecond. Default value is 1000ms
+	CompactionInterval uint32
 }
 
 const (
@@ -54,5 +58,7 @@ func DefaultOptions() *Options {
 	option.BlockSize = 4 * KB
 	option.MaxFileSize = 128 * MB
 	option.MaxOpenFiles = 2 * GB / option.MaxFileSize
+
+	option.CompactionInterval = 1000
 	return &option
 }

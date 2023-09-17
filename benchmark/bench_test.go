@@ -15,6 +15,8 @@ func openDB() func() {
 	options := goleveldb.DefaultOptions()
 	options.DirPath = "/tmp/golevel-bench"
 
+	os.RemoveAll(options.DirPath)
+
 	var err error
 	db, err = goleveldb.Open(*options)
 	if err != nil {

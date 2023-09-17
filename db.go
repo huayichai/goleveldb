@@ -1,6 +1,8 @@
 package goleveldb
 
 import (
+	"fmt"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -22,17 +24,20 @@ type DB struct {
 
 	current *version
 
-	backgroundCompactionScheduled bool
+	immExistCh chan bool
+	dbCloseCh  chan bool
 
-	mu                           sync.Mutex
-	backgroundWorkFinishedSignal *sync.Cond
+	muCompaction sync.Mutex
+
+	mu sync.Mutex
 }
 
 func Open(option Options) (*DB, error) {
 	var db DB
 	var err error
 	db.option = option
-	db.backgroundCompactionScheduled = false
+	db.immExistCh = make(chan bool, 1)
+	db.dbCloseCh = make(chan bool, 1)
 
 	// init TableCache
 	db.cache, err = newTableCache(&db.option)
@@ -51,7 +56,7 @@ func Open(option Options) (*DB, error) {
 		}
 	}
 
-	db.backgroundWorkFinishedSignal = sync.NewCond(&db.mu)
+	go db.backgroundCompaction()
 
 	return &db, nil
 }
@@ -60,7 +65,6 @@ func (db *DB) Put(key, value []byte) error {
 	if err := db.makeRoomForWrite(); err != nil {
 		return err
 	}
-
 	seq := db.current.lastSequence
 	db.current.lastSequence++
 
@@ -72,8 +76,6 @@ func (db *DB) Put(key, value []byte) error {
 }
 
 func (db *DB) Get(key []byte) ([]byte, error) {
-	db.mu.Lock()
-	defer db.mu.Unlock()
 	snapshot := db.current.lastSequence
 	mem := db.mem
 	imm := db.imm
@@ -114,27 +116,27 @@ func (db *DB) Delete(key []byte) error {
 }
 
 func (db *DB) makeRoomForWrite() error {
-	db.mu.Lock()
-	defer db.mu.Unlock()
 	for {
 		if db.current.numLevelFiles(0) >= L0_SlowdownWritesTrigger {
-			db.mu.Unlock()
 			time.Sleep(time.Duration(1) * time.Second)
-			db.mu.Lock()
-			db.maybeScheduleCompaction()
 		} else if db.mem.approximateMemoryUsage() < uint64(db.option.MemTableSize) {
 			// There is room in current memtable
 			return nil
 		} else if db.imm != nil {
 			// We have filled up the current memtable, but the previous
 			// one is still being compacted, so we wait.
-			db.backgroundWorkFinishedSignal.Wait() // will release the mutex 'db.mu'
+			time.Sleep(time.Duration(100+rand.Intn(100)) * time.Nanosecond)
 		} else {
 			// Attempt to switch to a new memtable and trigger compaction of old
-			if err := db.switchToNewMemTable(); err != nil {
-				return err
+			db.mu.Lock()
+			if db.imm == nil {
+				if err := db.switchToNewMemTable(); err != nil {
+					db.mu.Unlock()
+					return err
+				}
+				db.immExistCh <- true
 			}
-			db.maybeScheduleCompaction()
+			db.mu.Unlock()
 		}
 	}
 }
@@ -177,18 +179,19 @@ func (db *DB) writeLevel0Table(imm *memTable, ver *version) error {
 }
 
 func (db *DB) Close() error {
+	db.muCompaction.Lock()
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	// wait background compaction
-	for db.imm != nil {
-		db.backgroundWorkFinishedSignal.Wait()
-	}
+	defer db.muCompaction.Unlock()
+
+	db.dbCloseCh <- true
 
 	// save version
 	err := db.saveManifestFile()
 	if err != nil {
 		return err
 	}
+	fmt.Print("DB close successfully! Bye~")
 	return nil
 }
 

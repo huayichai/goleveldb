@@ -5,7 +5,7 @@ goleveldb is a simple implementation version of leveldb, which is used for learn
 Now support: 
 - [x] Put
 - [x] Get
-- [ ] Delete
+- [x] Delete
 - [x] Compaction
 - [ ] Iterator
 - [ ] BatchWrite
@@ -63,6 +63,6 @@ We put a million entries into db. Each entry has a 16 byte key, and a 110 byte v
 
 ```
 Benchmark Entries: 1000000
-Throughput: 12144 QPS
-Latency: 82.341 micros/op; 1.5 MB/s
+Throughput: 233317 QPS
+Latency: 4.286 micros/op; 30.0 MB/s
 ```
