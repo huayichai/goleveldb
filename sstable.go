@@ -76,7 +76,9 @@ func (builder *tableBuilder) flush() {
 	builder.pendingHandle = builder.writeblock(&builder.dataBlockBuilder)
 	if builder.status == nil {
 		builder.pendingIndexEntry = true
-		builder.file.Sync()
+		if builder.options.Sync {
+			builder.file.Sync()
+		}
 	}
 }
 
@@ -108,6 +110,9 @@ func (builder *tableBuilder) finish() {
 	// write footer block
 	footer := footer{indexblockHandle: indexblockHandle}
 	builder.status = builder.file.Append(string(footer.encodeTo()))
+
+	// flush disk
+	builder.file.Sync()
 
 	// close sstable
 	builder.file.Close()

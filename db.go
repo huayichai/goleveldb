@@ -188,10 +188,15 @@ func (db *DB) Close() error {
 	db.dbCloseCh <- true
 
 	// save version
-	err := db.saveManifestFile()
-	if err != nil {
+	if err := db.saveManifestFile(); err != nil {
 		return err
 	}
+
+	// close wal file
+	if err := db.logWriter.close(); err != nil {
+		return err
+	}
+
 	fmt.Print("DB close successfully! Bye~")
 	return nil
 }
