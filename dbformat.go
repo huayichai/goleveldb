@@ -2,7 +2,6 @@ package goleveldb
 
 import (
 	"bytes"
-	"encoding/binary"
 )
 
 const (
@@ -82,27 +81,30 @@ func (ik InternalKey) ExtractValueType() ValueType {
 }
 
 // LookupKey = UserKeySize + InternalKey
-// | user_key_size(4B) | user_key | (sequence_number + type)(8B) |
+// | user_key_size(1~5B) | user_key | (sequence_number + type)(8B) |
 type LookupKey []byte
 
 func NewLookupKey(userKey []byte, s SequenceNumber) LookupKey {
 	usize := uint32(len(userKey))
-	needed := 4 + usize + 8
-	dst := make([]byte, needed)
-	EncodeFixed32(dst, usize)
-	copy(dst[4:], userKey)
-	EncodeFixed64(dst[4+usize:], PackSequenceAndType(s, KTypeValue))
-	return dst
+	max_needed := 5 + usize + 8
+	dst := make([]byte, max_needed)
+	var offset uint32 = 0
+	offset += EncodeUVarint32(dst, usize)
+	copy(dst[offset:], userKey)
+	offset += usize
+	EncodeFixed64(dst[offset:], PackSequenceAndType(s, KTypeValue))
+	offset += 8
+	return dst[0:offset]
 }
 
 func (lk LookupKey) ExtractInternalKey() InternalKey {
-	user_key_size := DecodeFixed32(lk)
-	return InternalKey(lk[4 : 4+user_key_size+8])
+	user_key_size, offset := DecodeUVarint32(lk)
+	return InternalKey(lk[offset : offset+user_key_size+8])
 }
 
 func (lk LookupKey) ExtractUserKey() UserKey {
-	user_key_size := DecodeFixed32(lk)
-	return UserKey(lk[4 : 4+user_key_size])
+	user_key_size, offset := DecodeUVarint32(lk)
+	return UserKey(lk[offset : offset+user_key_size])
 }
 
 func LookupKeyCompare(a, b LookupKey) int {
@@ -110,53 +112,52 @@ func LookupKeyCompare(a, b LookupKey) int {
 }
 
 // KVEntry = LookupKey + Value
-// | user_key_size(4B) | user_key | (sequence_number + type)(8B) | value_size(4B) | value |
+// | user_key_size(1~5B) | user_key | (sequence_number + type)(8B) | value_size(1~5B) | value |
 type KVEntry []byte
 
 func NewKVEntry(seq SequenceNumber, valueType ValueType, userKey, value []byte) KVEntry {
 	// Format of an entry is concatenation of:
-	//  key_size     : uint32 of user_key.size()
+	//  key_size     : uvarint32 of user_key.size()
 	//  key bytes    : byte[user_key.size()]
 	//  tag          : uint64((sequence << 8) | type)
-	//  value_size   : uint32 of value.size()
+	//  value_size   : uvarint32 of value.size()
 	//  value bytes  : byte[value.size()]
 	user_key_size := uint32(len(userKey))
 	val_size := uint32(len(value))
-	encode_len := uint32(4 + user_key_size + 8 + 4 + val_size)
-	p := make([]byte, encode_len)
-	offset := 0
+	max_encode_len := uint32(5 + user_key_size + 8 + 5 + val_size)
+	p := make([]byte, max_encode_len)
+	var offset uint32 = 0
 
 	// encode key_size
-	EncodeFixed32(p, user_key_size)
-	offset += 4
+	offset += EncodeUVarint32(p, user_key_size)
 
 	// encode internal_key
 	copy(p[offset:], userKey) // key
-	offset += int(user_key_size)
+	offset += user_key_size
 	EncodeFixed64(p[offset:], PackSequenceAndType(seq, valueType)) // tag
 	offset += 8
 
 	// encode value_size
-	EncodeFixed32(p[offset:], val_size)
-	offset += 4
+	offset += EncodeUVarint32(p[offset:], val_size)
 
 	// encode value
 	copy(p[offset:], value)
+	offset += val_size
 
-	return KVEntry(p)
+	return KVEntry(p[0:offset])
 }
 
 func (entry KVEntry) ExtractInternalKey() InternalKey {
-	user_key_size := DecodeFixed32(entry)
-	internal_key_encode_len := 4 + user_key_size + 8
-	return InternalKey(entry[4:internal_key_encode_len])
+	user_key_size, begin := DecodeUVarint32(entry)
+	end := uint32(begin) + user_key_size + 8
+	return InternalKey(entry[begin:end])
 }
 
 func (entry KVEntry) ExtractValue() []byte {
-	user_key_size := DecodeFixed32(entry)
-	offset := 4 + user_key_size + 8
-	value_size := DecodeFixed32(entry[offset:])
-	offset += 4
+	user_key_size, offset := DecodeUVarint32(entry)
+	offset += (user_key_size + 8)
+	value_size, l := DecodeUVarint32(entry[offset:])
+	offset += l
 	return entry[offset : offset+value_size]
 }
 
@@ -166,15 +167,16 @@ func KVEntryCompare(a, b KVEntry) int {
 
 func PutLengthPrefixedSlice(value []byte) []byte {
 	size := uint32(len(value))
-	p := make([]byte, 4+size)
-	binary.LittleEndian.PutUint32(p, size)
-	copy(p[4:], value)
-	return p
+	p := make([]byte, 5+size)
+	offset := EncodeUVarint32(p, size)
+	copy(p[offset:], value)
+	offset += size
+	return p[0:offset]
 }
 
 func GetLengthPrefixedSlice(input []byte) ([]byte, uint32) {
-	size := binary.LittleEndian.Uint32(input[0:4])
-	value_begin_offset := 4
-	value_end_offset := value_begin_offset + int(size)
-	return input[value_begin_offset:value_end_offset], 4 + size
+	size, offset := DecodeUVarint32(input)
+	value_begin_offset := offset
+	value_end_offset := value_begin_offset + size
+	return input[value_begin_offset:value_end_offset], offset + size
 }

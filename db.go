@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -286,4 +287,18 @@ func (db *DB) recoverMemTable() error {
 	}
 	db.logWriter = newWALWriter(file, db.option.Sync)
 	return nil
+}
+
+func (db *DB) SpaceConsumption() (int64, error) {
+	var size int64
+	err := filepath.Walk(db.option.DirPath, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return err
+	})
+	return size, err
 }

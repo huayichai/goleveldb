@@ -33,7 +33,7 @@ func TestRandomPut(t *testing.T) {
 	defer destroy()
 
 	putNum := 100000
-	data_size := float64(putNum*(16+110)) / float64(1024*1024) // MB
+	raw_data_size := float64(putNum*(16+110)) / float64(1024*1024) // MB
 
 	startTime := time.Now()
 	for i := 0; i < putNum; i++ {
@@ -46,9 +46,13 @@ func TestRandomPut(t *testing.T) {
 
 	throughput := int64(float64(putNum) / float64(elapsedTime) * 1000.0) // QPS
 	latency := float64(elapsedTime*1000) / float64(putNum)
-	write_speed := float64(data_size) / float64(elapsedTime/1000)
+	write_speed := raw_data_size * 1000.0 / float64(elapsedTime)
+	tmp, _ := db.SpaceConsumption()
+	real_data_size := float64(tmp) / float64(1024*1024) // MB
 
 	fmt.Printf("Benchmark Entries: %d\n", putNum)
 	fmt.Printf("Throughput: %d QPS\n", throughput)
 	fmt.Printf("Latency: %.3f micros/op; %.1f MB/s\n", latency, write_speed)
+	fmt.Printf("Spatial amplification: %.3f, real data size: %.3f (MB), raw data size: %.3f (MB)\n",
+		float64(real_data_size)/float64(raw_data_size), real_data_size, raw_data_size)
 }

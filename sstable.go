@@ -1,19 +1,17 @@
 package goleveldb
 
-import (
-	"encoding/binary"
-)
+import "encoding/binary"
 
 // Decode SSTable Entry from [offset:]byte
 // return decode_len, internal_key, value
 func decodeSSTableEntryFrom(data []byte, offset uint32) (uint32, InternalKey, []byte) {
-	// | internal_key_size(4B) | value_size(4B) | internal_key | value |
-	internal_key_size := DecodeFixed32(data[offset:])
-	value_size := DecodeFixed32(data[offset+4:])
-	internal_key_offset := offset + 8
+	// | internal_key_size(1~5B) | value_size(1~5B) | internal_key | value |
+	internal_key_size, l1 := DecodeUVarint32(data[offset:])
+	value_size, l2 := DecodeUVarint32(data[offset+uint32(l1):])
+	internal_key_offset := offset + uint32(l1+l2)
 	value_offset := internal_key_offset + internal_key_size
 
-	decode_len := 8 + internal_key_size + value_size
+	decode_len := uint32(l1+l2) + internal_key_size + value_size
 	internal_key := InternalKey(data[internal_key_offset:value_offset])
 	value := data[value_offset : value_offset+value_size]
 	return decode_len, internal_key, value
@@ -109,7 +107,7 @@ func (builder *tableBuilder) finish() {
 
 	// write footer block
 	footer := footer{indexblockHandle: indexblockHandle}
-	builder.status = builder.file.Append(footer.encodeTo())
+	builder.status = builder.file.Append(string(footer.encodeTo()))
 
 	// close sstable
 	builder.file.Close()
@@ -127,13 +125,13 @@ type blockBuilder struct {
 }
 
 func (builder *blockBuilder) add(key InternalKey, value []byte) {
-	// | internal_key_size(4 byte) | value_size(4 byte) | internal_key | value |
-	p := make([]byte, 8)
+	// | internal_key_size(1~5byte) | value_size(1~5byte) | internal_key | value |
+	p := make([]byte, 10)
 	key_size := uint32(len(key))
 	value_size := uint32(len(value))
-	EncodeFixed32(p, key_size)
-	EncodeFixed32(p[4:8], value_size)
-	builder.buffer = append(builder.buffer, p...)
+	offset := EncodeUVarint32(p, key_size)
+	offset += EncodeUVarint32(p[offset:], value_size)
+	builder.buffer = append(builder.buffer, p[0:offset]...)
 	builder.buffer = append(builder.buffer, []byte(key)...)
 	builder.buffer = append(builder.buffer, value...)
 	builder.counter++
@@ -163,16 +161,16 @@ type footer struct {
 }
 
 const (
-	kEncodedLength int = 32
+	kFooterEncodedLength int = 32
 )
 
-func (f *footer) encodeTo() string {
-	p := make([]byte, kEncodedLength)
+func (f *footer) encodeTo() []byte {
+	p := make([]byte, kFooterEncodedLength)
 	binary.LittleEndian.PutUint64(p[0:8], f.metaIndexHandle.offset)
 	binary.LittleEndian.PutUint64(p[8:16], f.metaIndexHandle.size)
 	binary.LittleEndian.PutUint64(p[16:24], f.indexblockHandle.offset)
 	binary.LittleEndian.PutUint64(p[24:32], f.indexblockHandle.size)
-	return string(p)
+	return p
 }
 
 func (f *footer) decodeFrom(data []byte) {
@@ -290,7 +288,7 @@ func openSSTable(filepath string) (*sstable, error) {
 	size := uint64(file.Size())
 
 	// Read the footer
-	footer_data, err := table.file.Read(size-uint64(kEncodedLength), uint32(kEncodedLength))
+	footer_data, err := table.file.Read(size-uint64(kFooterEncodedLength), uint32(kFooterEncodedLength))
 	if err != nil {
 		return nil, err
 	}
