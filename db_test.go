@@ -17,18 +17,20 @@ func TestDB_Basic(t *testing.T) {
 
 	db, _ := Open(*option)
 
-	for i := 0; i < 10000; i++ {
+	test_num := 10000
+
+	for i := 0; i < test_num; i++ {
 		key := fmt.Sprintf("%06dtest", i)
 		value := fmt.Sprintf("value%06d", i)
 		db.Put([]byte(key), []byte(value))
 	}
 
-	for i := 0; i < 10000; i += 2 {
+	for i := 0; i < test_num; i += 2 {
 		key := fmt.Sprintf("%06dtest", i)
 		db.Delete([]byte(key))
 	}
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < test_num; i++ {
 		key := fmt.Sprintf("%06dtest", i)
 		v, err := db.Get([]byte(key))
 		if i%2 == 0 {
@@ -60,13 +62,15 @@ func TestDB1(t *testing.T) {
 
 	db, _ := Open(*option)
 
-	for i := 0; i < 10000; i++ {
+	test_num := 10000
+
+	for i := 0; i < test_num; i++ {
 		key := fmt.Sprintf("%06dtest", i)
 		value := fmt.Sprintf("value%06d", i)
 		db.Put([]byte(key), []byte(value))
 	}
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < test_num; i++ {
 		key := fmt.Sprintf("%06dtest", i)
 		value := fmt.Sprintf("value%06d", i)
 		v, err := db.Get([]byte(key))

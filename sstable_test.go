@@ -17,8 +17,10 @@ func createDir(dirPath string) error {
 	return nil
 }
 
-func Test_SSTable_GetDiffVersion(t *testing.T) {
+func Test_SSTable_PutGet(t *testing.T) {
 	options := DefaultOptions()
+	options.BlockSize = 128
+	options.BlockRestartInterval = 4
 	options.DirPath = "/tmp/golevel-sstable"
 	os.RemoveAll(options.DirPath)
 	if err := createDir(options.DirPath); err != nil {
@@ -32,18 +34,29 @@ func Test_SSTable_GetDiffVersion(t *testing.T) {
 		panic(err)
 	}
 	builder := newTableBuilder(options, file)
-	for i := 9; i >= 0; i-- {
-		i_k := NewInternalKey([]byte("key"), SequenceNumber(i), KTypeValue)
+	for i := 0; i < 500; i++ {
+		i_k := NewInternalKey([]byte(fmt.Sprintf("key%04d", i)), SequenceNumber(i), KTypeValue)
 		builder.add(i_k, []byte(fmt.Sprintf("v%d", i)))
 	}
 	builder.finish()
 
 	table, _ := openSSTable(sstableFileName(options.DirPath, 1))
-	for i := 0; i < 10; i++ {
-		i_k := NewInternalKey([]byte("key"), SequenceNumber(i), KTypeValue)
+	for i := 0; i < 500; i++ {
+		i_k := NewInternalKey([]byte(fmt.Sprintf("key%04d", i)), SequenceNumber(i), KTypeValue)
 		v, _ := table.get(i_k)
 		if !bytes.Equal(v, []byte(fmt.Sprintf("v%d", i))) {
-			t.Fatalf("lookup key failed\n")
+			t.Fatalf("lookup key%04d failed\n", i)
 		}
+	}
+
+	iter := newSSTableIterator(table)
+	i := 0
+	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
+		k := NewInternalKey([]byte(fmt.Sprintf("key%04d", i)), SequenceNumber(i), KTypeValue)
+		v := []byte(fmt.Sprintf("v%d", i))
+		if InternalKeyCompare(iter.Key(), k) != 0 || Compare(iter.Value(), v) != 0 {
+			t.Fatalf("scan key%04d failed\n", i)
+		}
+		i++
 	}
 }

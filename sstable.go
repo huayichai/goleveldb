@@ -1,6 +1,8 @@
 package goleveldb
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+)
 
 // Decode SSTable Entry from [offset:]byte
 // return decode_len, internal_key, value
@@ -30,133 +32,9 @@ func (handle *blockHandle) encodeTo() []byte {
 	return p
 }
 
-// tableBuilder build the sstable
-type tableBuilder struct {
-	options           *Options
-	file              WritableFile
-	status            error
-	offset            uint64
-	dataBlockBuilder  blockBuilder
-	indexBlockBuilder blockBuilder
-	pendingIndexEntry bool
-	pendingHandle     blockHandle
-	lastKey           InternalKey
-}
-
-func newTableBuilder(options *Options, file WritableFile) *tableBuilder {
-	return &tableBuilder{
-		options:           options,
-		file:              file,
-		offset:            0,
-		pendingIndexEntry: false,
-	}
-}
-
-// Add entry to data block
-// If the the data block exceeds the threshold, flush and insert an index in the index block.
-func (builder *tableBuilder) add(key InternalKey, value []byte) {
-	if builder.pendingIndexEntry {
-		builder.indexBlockBuilder.add(builder.lastKey, builder.pendingHandle.encodeTo())
-		builder.pendingIndexEntry = false
-	}
-
-	builder.dataBlockBuilder.add(key, value)
-
-	if builder.dataBlockBuilder.currentSizeEstimate() >= builder.options.BlockSize {
-		builder.flush()
-	}
-
-	builder.lastKey = key
-}
-
-func (builder *tableBuilder) flush() {
-	if builder.dataBlockBuilder.empty() {
-		return
-	}
-	builder.pendingHandle = builder.writeblock(&builder.dataBlockBuilder)
-	if builder.status == nil {
-		builder.pendingIndexEntry = true
-		if builder.options.Sync {
-			builder.file.Sync()
-		}
-	}
-}
-
-func (builder *tableBuilder) writeblock(blockBuilder *blockBuilder) blockHandle {
-	blockContent := blockBuilder.finish()
-	blockSize := len(blockContent)
-
-	var handle blockHandle
-	handle.offset = builder.offset
-	handle.size = uint64(blockSize)
-	builder.offset += uint64(blockSize)
-
-	builder.status = builder.file.Append(string(blockContent))
-
-	blockBuilder.reset()
-	return handle
-}
-
-func (builder *tableBuilder) finish() {
-	builder.flush()
-
-	// Write index block
-	if builder.pendingIndexEntry {
-		builder.indexBlockBuilder.add(builder.lastKey, builder.pendingHandle.encodeTo())
-		builder.pendingIndexEntry = false
-	}
-	indexblockHandle := builder.writeblock(&builder.indexBlockBuilder)
-
-	// write footer block
-	footer := footer{indexblockHandle: indexblockHandle}
-	builder.status = builder.file.Append(string(footer.encodeTo()))
-
-	// flush disk
-	builder.file.Sync()
-
-	// close sstable
-	builder.file.Close()
-}
-
-func (builder *tableBuilder) fileSize() uint64 {
-	return builder.offset
-}
-
-// blockBuilder builds the block in sstable
-// block contains datablock and indexblock
-type blockBuilder struct {
-	buffer  []byte // Destination buffer
-	counter uint32 // Number of entries in block
-}
-
-func (builder *blockBuilder) add(key InternalKey, value []byte) {
-	// | internal_key_size(1~5byte) | value_size(1~5byte) | internal_key | value |
-	p := make([]byte, 10)
-	key_size := uint32(len(key))
-	value_size := uint32(len(value))
-	offset := EncodeUVarint32(p, key_size)
-	offset += EncodeUVarint32(p[offset:], value_size)
-	builder.buffer = append(builder.buffer, p[0:offset]...)
-	builder.buffer = append(builder.buffer, []byte(key)...)
-	builder.buffer = append(builder.buffer, value...)
-	builder.counter++
-}
-
-func (builder *blockBuilder) finish() []byte {
-	return builder.buffer
-}
-
-func (builder *blockBuilder) currentSizeEstimate() uint32 {
-	return uint32(len(builder.buffer))
-}
-
-func (builder *blockBuilder) reset() {
-	builder.counter = 0
-	builder.buffer = builder.buffer[0:0]
-}
-
-func (builder *blockBuilder) empty() bool {
-	return builder.currentSizeEstimate() == 0
+func (handle *blockHandle) decodeFrom(buf []byte) {
+	handle.offset = DecodeFixed64(buf)
+	handle.size = DecodeFixed64(buf[8:])
 }
 
 // footer at the end of sstable
@@ -186,67 +64,111 @@ func (f *footer) decodeFrom(data []byte) {
 }
 
 type block struct {
-	data []byte
-	size uint32
+	data       []byte
+	restarts   []byte
+	n_restarts uint32
 }
 
-// Read block data from file
-func newBlock(file RandomAccessFile, blockHandle blockHandle) (*block, error) {
+func newBlock(buf []byte) *block {
 	var b block
-	var err error
-	b.size = uint32(blockHandle.size)
-	b.data, err = file.Read(blockHandle.offset, uint32(blockHandle.size))
-	if err != nil {
-		return nil, err
-	}
-	return &b, err
+	buf_len := len(buf)
+	restart_end := buf_len - 4
+	b.n_restarts = DecodeFixed32(buf[restart_end:])
+	restart_begin := restart_end - int(b.n_restarts)*4
+	b.restarts = buf[restart_begin:restart_end]
+	b.data = buf[0:restart_begin]
+	return &b
 }
 
-func (b *block) get(offset uint32, key InternalKey) ([]byte, []byte, error) {
-	cur_offset := offset
-	for cur_offset < b.size {
-		n, cur_key, value := decodeSSTableEntryFrom(b.data, cur_offset)
-		cmp := InternalKeyCompare(cur_key, key)
-		if cmp >= 0 {
-			return cur_key, value, nil
-		}
-		cur_offset += n
+// Get the first key that greater or equal than lookup_key
+func (b *block) get(key InternalKey) ([]byte, []byte, error) {
+	iter := newBlockIterator(b)
+	iter.Seek(key)
+	if iter.Valid() {
+		return iter.key, iter.value, nil
+	} else {
+		return nil, nil, ErrKeyNotFound
 	}
-	return nil, nil, ErrKeyNotFound
+}
+
+func (b *block) getRestartPoint(index uint32) uint32 {
+	return DecodeFixed32(b.restarts[index*4:])
+}
+
+// Decode entry from offset
+// Entry -> | shared(1~5B) | non_shared(1~5B) | valye_len(1~5B) | key | value |
+// Return shared, non_shared, value_len, k, v, encode_len
+func (b *block) decodeEntry(offset uint32) (uint32, uint32, uint32, []byte, []byte, uint32) {
+	tmp := offset
+	shared, l1 := DecodeUVarint32(b.data[offset:])
+	offset += l1
+	non_shared, l2 := DecodeUVarint32(b.data[offset:])
+	offset += l2
+	value_len, l3 := DecodeUVarint32(b.data[offset:])
+	offset += l3
+	k := b.data[offset : offset+non_shared]
+	offset += non_shared
+	v := b.data[offset : offset+value_len]
+	offset += value_len
+	return shared, non_shared, value_len, k, v, offset - tmp
 }
 
 type blockIterator struct {
-	data             []byte
-	current          uint32 // current_ is offset in data of current entry.
-	key              InternalKey
-	value            []byte
-	current_code_len uint32 // current kv entry len
+	b          *block
+	cur_offset uint32 // the scan offset in current restart region
+	key        InternalKey
+	value      []byte
 }
 
 func newBlockIterator(b *block) *blockIterator {
 	var iter blockIterator
-	iter.data = b.data
-	iter.current = 0
-	iter.SeekToFirst()
+	iter.b = b
 	return &iter
 }
 
 func (iter *blockIterator) Valid() bool {
-	return iter.current < uint32(len(iter.data))
+	return iter.cur_offset < uint32(len(iter.b.data))
 }
 
 func (iter *blockIterator) SeekToFirst() {
-	iter.current = 0
-	iter.current_code_len, iter.key, iter.value = decodeSSTableEntryFrom(iter.data, 0)
+	iter.cur_offset = 0
+	iter.Next()
 }
 
 func (iter *blockIterator) SeekToLast() {
 	panic("blockIterator.SeekToLast() Unimplement!")
 }
 
+func (iter *blockIterator) SeekToRestartPoint(index uint32) {
+	iter.cur_offset = iter.b.getRestartPoint(index)
+	iter.Next()
+}
+
 func (iter *blockIterator) Seek(target interface{}) {
-	for iter.Valid() && InternalKeyCompare(target.(InternalKey), iter.key) < 0 {
-		iter.Next()
+	// binary search by resarts
+	left := uint32(0)
+	right := iter.b.n_restarts - 1
+	for left < right {
+		mid := (left + right + 1) / 2
+		region_offset := iter.b.getRestartPoint(mid)
+		_, _, _, k, _, _ := iter.b.decodeEntry(region_offset)
+		// use Compare not InternalKeyCompare due to indexblock not store internalkey
+		cmp := Compare(k, target.(InternalKey).ExtractUserKey())
+		if cmp < 0 { // k < key
+			left = mid
+		} else if cmp > 0 { // k > key
+			right = mid - 1
+		} else {
+			break
+		}
+	}
+
+	iter.SeekToRestartPoint(left)
+
+	for ; iter.Valid(); iter.Next() {
+		if Compare(iter.key, target.(InternalKey).ExtractUserKey()) >= 0 {
+			return
+		}
 	}
 }
 
@@ -254,12 +176,23 @@ func (iter *blockIterator) Next() {
 	if !iter.Valid() {
 		return
 	}
+	var encode_len uint32
+	iter.key, iter.value, encode_len = iter.parseNextEntry()
+	iter.cur_offset += encode_len
+}
 
-	// next key-value entry offset
-	iter.current += iter.current_code_len
-
-	// decode from bytes
-	iter.current_code_len, iter.key, iter.value = decodeSSTableEntryFrom(iter.data, iter.current)
+// Return next_key, value, encode_len
+func (iter *blockIterator) parseNextEntry() (InternalKey, []byte, uint32) {
+	shared, _, _, k, v, encode_len := iter.b.decodeEntry(iter.cur_offset)
+	var next_key, next_value []byte
+	if shared == 0 { // restart
+		next_key = k
+	} else {
+		next_key = iter.key[0:shared]
+		next_key = append(next_key, k...)
+	}
+	next_value = v
+	return next_key, next_value, encode_len
 }
 
 func (iter *blockIterator) Prev() {
@@ -279,8 +212,8 @@ var _ Iterator = (*blockIterator)(nil)
 type sstable struct {
 	file       RandomAccessFile
 	footer     footer
-	indexblock *block
-	datablock  *block
+	indexblock *block // the offset of block in datablocks
+	datablocks []byte
 }
 
 func openSSTable(filepath string) (*sstable, error) {
@@ -299,17 +232,20 @@ func openSSTable(filepath string) (*sstable, error) {
 	}
 	table.footer.decodeFrom(footer_data)
 
-	// Read the index block
-	table.indexblock, err = newBlock(table.file, table.footer.indexblockHandle)
+	// Read all data blocks buf
+	table.datablocks, err = table.file.Read(0, uint32(table.footer.indexblockHandle.offset))
 	if err != nil {
 		return nil, err
 	}
 
-	// Read the data block
-	table.datablock, err = newBlock(table.file, blockHandle{offset: 0, size: table.footer.indexblockHandle.offset})
+	// Read index block buf
+	index_block_buf, err := table.file.Read(table.footer.indexblockHandle.offset, uint32(table.footer.indexblockHandle.size))
 	if err != nil {
 		return nil, err
 	}
+
+	// Construct index block
+	table.indexblock = newBlock(index_block_buf)
 
 	return &table, nil
 }
@@ -321,67 +257,99 @@ func (table *sstable) close() error {
 // Firstly, locate the block according to the index block,
 // and then search by sequential traversal.
 func (table *sstable) get(key InternalKey) ([]byte, error) {
-	// search in index block
-	var offset uint32
-	_, pos_bytes, err := table.indexblock.get(0, key)
-	if err != nil {
-		return nil, err
-	} else {
-		offset = DecodeFixed32(pos_bytes)
-	}
-
-	// search in data block
-	k, v, err := table.datablock.get(offset, key)
-	if err != nil {
-		return nil, err
-	} else if UserKeyCompare(InternalKey(k).ExtractUserKey(), key.ExtractUserKey()) != 0 {
+	iter := newSSTableIterator(table)
+	iter.Seek(key)
+	k := InternalKey(iter.Key())
+	if UserKeyCompare(k.ExtractUserKey(), key.ExtractUserKey()) != 0 {
 		return nil, ErrKeyNotFound
-	} else if InternalKey(k).ExtractValueType() == KTypeDeletion {
+	} else if k.ExtractValueType() == KTypeDeletion {
 		return nil, errKeyDeleted
 	}
-	return v, err
+	return iter.Value(), nil
 }
 
 type sstableIterator struct {
-	datablock *block
-	data_iter *blockIterator
+	table             *sstable
+	index_block_iter  *blockIterator
+	data_block_iter   *blockIterator
+	cur_block_offset  uint32
+	next_block_offset uint32
 }
 
 func newSSTableIterator(table *sstable) *sstableIterator {
 	var iter sstableIterator
-	iter.datablock = table.datablock
-	iter.data_iter = newBlockIterator(table.datablock)
+	iter.table = table
 	return &iter
 }
 
 func (iter *sstableIterator) Valid() bool {
-	return iter.data_iter.Valid()
+	index_v := iter.index_block_iter.Valid()
+	data_v := iter.data_block_iter.Valid()
+	return index_v || data_v
 }
 
 func (iter *sstableIterator) SeekToFirst() {
-	iter.data_iter.SeekToFirst()
+	if iter.index_block_iter == nil {
+		iter.index_block_iter = newBlockIterator(iter.table.indexblock)
+	}
+	iter.index_block_iter.SeekToFirst()
+	iter.index_block_iter.Next()
+	if !iter.index_block_iter.Valid() {
+		return
+	}
+	iter.cur_block_offset = 0
+	iter.next_block_offset = DecodeFixed32(iter.index_block_iter.value)
+	block := newBlock(iter.table.datablocks[iter.cur_block_offset:iter.next_block_offset])
+	iter.data_block_iter = newBlockIterator(block)
+
+	iter.Next()
 }
 
 func (iter *sstableIterator) SeekToLast() {
-	iter.data_iter.SeekToLast()
+	panic("Not implement.")
 }
 
 func (iter *sstableIterator) Seek(target interface{}) {
-	iter.data_iter.Seek(target)
+	if iter.index_block_iter == nil {
+		iter.index_block_iter = newBlockIterator(iter.table.indexblock)
+	}
+
+	var handle blockHandle
+	iter.index_block_iter.Seek(target)
+	handle.decodeFrom(iter.index_block_iter.value)
+	iter.parseDataBlock(&handle)
+
+	iter.data_block_iter.Seek(target)
 }
 
 func (iter *sstableIterator) Next() {
-	iter.data_iter.Next()
+	if iter.data_block_iter.Valid() {
+		iter.data_block_iter.Next()
+	} else if iter.index_block_iter.Valid() {
+		var handle blockHandle
+		handle.decodeFrom(iter.index_block_iter.value)
+		iter.parseDataBlock(&handle)
+		iter.data_block_iter.SeekToFirst()
+		iter.index_block_iter.Next()
+	}
+}
+
+func (iter *sstableIterator) parseDataBlock(handle *blockHandle) {
+	block, err := iter.table.file.Read(handle.offset, uint32(handle.size))
+	if err != nil {
+		return
+	}
+	iter.data_block_iter = newBlockIterator(newBlock(block))
 }
 
 func (iter *sstableIterator) Prev() {
-	iter.data_iter.Prev()
+	panic("Not implement.")
 }
 
 func (iter *sstableIterator) Key() []byte {
-	return iter.data_iter.Key()
+	return iter.data_block_iter.key
 }
 
 func (iter *sstableIterator) Value() []byte {
-	return iter.data_iter.Value()
+	return iter.data_block_iter.value
 }

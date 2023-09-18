@@ -29,11 +29,15 @@ const (
 
 type SequenceNumber uint64
 
+func Compare(a, b []byte) int {
+	return bytes.Compare(a, b)
+}
+
 // UserKey | orignal key |
 type UserKey []byte
 
 func UserKeyCompare(a, b UserKey) int {
-	return bytes.Compare(a, b)
+	return Compare(a, b)
 }
 
 // InternalKey = UserKey + SequenceNumber + Type
@@ -179,4 +183,19 @@ func GetLengthPrefixedSlice(input []byte) ([]byte, uint32) {
 	value_begin_offset := offset
 	value_end_offset := value_begin_offset + size
 	return input[value_begin_offset:value_end_offset], offset + size
+}
+
+func FindShortestSeparator(a, b []byte) []byte {
+	a_len := len(a)
+	b_len := len(b)
+	min_len := min(a_len, b_len)
+	diff_index := 0
+	for (diff_index < min_len) && (a[diff_index] == b[diff_index]) {
+		diff_index++
+	}
+	if diff_index == min_len {
+		// a == b
+		return b
+	}
+	return b[0 : diff_index+1]
 }

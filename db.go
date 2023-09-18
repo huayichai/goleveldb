@@ -97,6 +97,8 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 		}
 	}
 
+	db.muCompaction.Lock()
+	defer db.muCompaction.Unlock()
 	value, err := current.get(lookup_key.ExtractInternalKey())
 	return value, err
 }

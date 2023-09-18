@@ -38,6 +38,11 @@ type Options struct {
 	// CompactionInterval indicates the time interval for periodic comparison in the background.
 	// Unit is MilliSecond. Default value is 1000ms
 	CompactionInterval uint32
+
+	// BlockRestartInterval, the number of keys between restart points for delta encoding of keys.
+	// This parameter can be changed dynamically.  Most clients should leave this parameter alone.
+	// Default value if 16
+	BlockRestartInterval uint32
 }
 
 const (
@@ -60,5 +65,6 @@ func DefaultOptions() *Options {
 	option.MaxOpenFiles = 2 * GB / option.MaxFileSize
 
 	option.CompactionInterval = 1000
+	option.BlockRestartInterval = 16
 	return &option
 }
