@@ -125,7 +125,6 @@ func (db *DB) makeInputIterator(c *compaction) (*mergeIterator, error) {
 	for i := 0; i < 2; i++ {
 		for j := 0; j < len(c.inputs[i]); j++ {
 			table, err := db.cache.getTable(c.inputs[i][j].number)
-			defer table.close()
 			if err != nil {
 				return nil, err
 			}

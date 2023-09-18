@@ -43,7 +43,7 @@ func TestDB_Basic(t *testing.T) {
 			}
 			value := fmt.Sprintf("value%06d", i)
 			if value != string(v) {
-				t.Fatalf("Expect: %s, but get %s\n", key, v)
+				t.Fatalf("Expect: %s, but get %s\n", value, v)
 			}
 		}
 	}
@@ -71,6 +71,9 @@ func TestDB1(t *testing.T) {
 	}
 
 	for i := 0; i < test_num; i++ {
+		if i == 11 {
+			i = 11
+		}
 		key := fmt.Sprintf("%06dtest", i)
 		value := fmt.Sprintf("value%06d", i)
 		v, err := db.Get([]byte(key))
@@ -78,7 +81,7 @@ func TestDB1(t *testing.T) {
 			t.Fatalf("lookup: %s err. %s\n", key, err.Error())
 		}
 		if value != string(v) {
-			t.Fatalf("Expect: %s, but get %s\n", key, v)
+			t.Fatalf("Expect: %s, but get %s\n", value, v)
 		}
 	}
 

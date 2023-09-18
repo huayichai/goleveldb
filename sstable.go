@@ -183,15 +183,15 @@ func (iter *blockIterator) Next() {
 
 // Return next_key, value, encode_len
 func (iter *blockIterator) parseNextEntry() (InternalKey, []byte, uint32) {
-	shared, _, _, k, v, encode_len := iter.b.decodeEntry(iter.cur_offset)
-	var next_key, next_value []byte
+	shared, non_shared, _, k, v, encode_len := iter.b.decodeEntry(iter.cur_offset)
+	next_key := make([]byte, shared+non_shared)
 	if shared == 0 { // restart
 		next_key = k
 	} else {
-		next_key = iter.key[0:shared]
-		next_key = append(next_key, k...)
+		copy(next_key[0:shared], iter.key[0:shared])
+		copy(next_key[shared:shared+non_shared], k[0:non_shared])
 	}
-	next_value = v
+	next_value := v
 	return next_key, next_value, encode_len
 }
 
@@ -210,7 +210,6 @@ func (iter *blockIterator) Value() []byte {
 var _ Iterator = (*blockIterator)(nil)
 
 type sstable struct {
-	file       RandomAccessFile
 	footer     footer
 	indexblock *block // the offset of block in datablocks
 	datablocks []byte
@@ -222,24 +221,24 @@ func openSSTable(filepath string) (*sstable, error) {
 	if err != nil {
 		return nil, err
 	}
-	table.file = file
+	defer file.Close()
 	size := uint64(file.Size())
 
 	// Read the footer
-	footer_data, err := table.file.Read(size-uint64(kFooterEncodedLength), uint32(kFooterEncodedLength))
+	footer_data, err := file.Read(size-uint64(kFooterEncodedLength), uint32(kFooterEncodedLength))
 	if err != nil {
 		return nil, err
 	}
 	table.footer.decodeFrom(footer_data)
 
 	// Read all data blocks buf
-	table.datablocks, err = table.file.Read(0, uint32(table.footer.indexblockHandle.offset))
+	table.datablocks, err = file.Read(0, uint32(table.footer.indexblockHandle.offset))
 	if err != nil {
 		return nil, err
 	}
 
 	// Read index block buf
-	index_block_buf, err := table.file.Read(table.footer.indexblockHandle.offset, uint32(table.footer.indexblockHandle.size))
+	index_block_buf, err := file.Read(table.footer.indexblockHandle.offset, uint32(table.footer.indexblockHandle.size))
 	if err != nil {
 		return nil, err
 	}
@@ -248,10 +247,6 @@ func openSSTable(filepath string) (*sstable, error) {
 	table.indexblock = newBlock(index_block_buf)
 
 	return &table, nil
-}
-
-func (table *sstable) close() error {
-	return table.file.Close()
 }
 
 // Firstly, locate the block according to the index block,
@@ -269,11 +264,9 @@ func (table *sstable) get(key InternalKey) ([]byte, error) {
 }
 
 type sstableIterator struct {
-	table             *sstable
-	index_block_iter  *blockIterator
-	data_block_iter   *blockIterator
-	cur_block_offset  uint32
-	next_block_offset uint32
+	table            *sstable
+	index_block_iter *blockIterator
+	data_block_iter  *blockIterator
 }
 
 func newSSTableIterator(table *sstable) *sstableIterator {
@@ -293,16 +286,11 @@ func (iter *sstableIterator) SeekToFirst() {
 		iter.index_block_iter = newBlockIterator(iter.table.indexblock)
 	}
 	iter.index_block_iter.SeekToFirst()
-	iter.index_block_iter.Next()
-	if !iter.index_block_iter.Valid() {
-		return
-	}
-	iter.cur_block_offset = 0
-	iter.next_block_offset = DecodeFixed32(iter.index_block_iter.value)
-	block := newBlock(iter.table.datablocks[iter.cur_block_offset:iter.next_block_offset])
-	iter.data_block_iter = newBlockIterator(block)
-
-	iter.Next()
+	var handle blockHandle
+	handle.decodeFrom(iter.index_block_iter.value)
+	block_data := newBlock(iter.table.datablocks[handle.offset : handle.offset+handle.size])
+	iter.data_block_iter = newBlockIterator(block_data)
+	iter.data_block_iter.SeekToFirst()
 }
 
 func (iter *sstableIterator) SeekToLast() {
@@ -326,20 +314,17 @@ func (iter *sstableIterator) Next() {
 	if iter.data_block_iter.Valid() {
 		iter.data_block_iter.Next()
 	} else if iter.index_block_iter.Valid() {
+		iter.index_block_iter.Next()
 		var handle blockHandle
 		handle.decodeFrom(iter.index_block_iter.value)
 		iter.parseDataBlock(&handle)
 		iter.data_block_iter.SeekToFirst()
-		iter.index_block_iter.Next()
 	}
 }
 
 func (iter *sstableIterator) parseDataBlock(handle *blockHandle) {
-	block, err := iter.table.file.Read(handle.offset, uint32(handle.size))
-	if err != nil {
-		return
-	}
-	iter.data_block_iter = newBlockIterator(newBlock(block))
+	block_data := iter.table.datablocks[handle.offset : handle.offset+handle.size]
+	iter.data_block_iter = newBlockIterator(newBlock(block_data))
 }
 
 func (iter *sstableIterator) Prev() {

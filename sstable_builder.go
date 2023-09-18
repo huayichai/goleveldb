@@ -28,9 +28,9 @@ func newTableBuilder(options *Options, file WritableFile) *tableBuilder {
 // If the the data block exceeds the threshold, flush and insert an index in the index block.
 func (builder *tableBuilder) add(key InternalKey, value []byte) {
 	if builder.pendingIndexEntry {
-		sep := FindShortestSeparator(builder.lastKey, key) // all keys before key is less than sep
+		// sep := FindShortestSeparator(builder.lastKey, key) // all keys before key is less than sep
 		handle := builder.pendingHandle.encodeTo()
-		builder.indexBlockBuilder.add(sep, handle)
+		builder.indexBlockBuilder.add(builder.lastKey, handle) // keys in current datablock all less or equal than builder.lastKey
 		builder.pendingIndexEntry = false
 	}
 

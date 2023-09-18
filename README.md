@@ -10,7 +10,7 @@ Now support:
 - [ ] Iterator
 - [ ] BatchWrite
 - [ ] Concurrency
-- [ ] Data Compression
+- [x] Data Compression
 
 ## Getting Started
 From your project, run the following command, this will retrieve the library.

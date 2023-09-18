@@ -33,15 +33,16 @@ func Test_SSTable_PutGet(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	test_num := 500
 	builder := newTableBuilder(options, file)
-	for i := 0; i < 500; i++ {
+	for i := 0; i < test_num; i++ {
 		i_k := NewInternalKey([]byte(fmt.Sprintf("key%04d", i)), SequenceNumber(i), KTypeValue)
 		builder.add(i_k, []byte(fmt.Sprintf("v%d", i)))
 	}
 	builder.finish()
 
 	table, _ := openSSTable(sstableFileName(options.DirPath, 1))
-	for i := 0; i < 500; i++ {
+	for i := 0; i < test_num; i++ {
 		i_k := NewInternalKey([]byte(fmt.Sprintf("key%04d", i)), SequenceNumber(i), KTypeValue)
 		v, _ := table.get(i_k)
 		if !bytes.Equal(v, []byte(fmt.Sprintf("v%d", i))) {
