@@ -70,7 +70,7 @@ func (db *DB) doCompaction(c *compaction) error {
 	var prev_user_key []byte = nil
 	var current_user_key []byte = nil
 
-	for iter.seekToFirst(); iter.valid(); iter.next() {
+	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 		var meta fileMetaData
 		meta.number = db.current.nextFileNumber
 		db.current.nextFileNumber++
@@ -80,9 +80,9 @@ func (db *DB) doCompaction(c *compaction) error {
 		}
 		builder := newTableBuilder(&db.option, file)
 
-		meta.smallest = iter.internalKey()
-		for ; iter.valid(); iter.next() {
-			internal_key := iter.internalKey()
+		meta.smallest = iter.Key()
+		for ; iter.Valid(); iter.Next() {
+			internal_key := InternalKey(iter.Key())
 			current_user_key = internal_key.ExtractUserKey()
 			if prev_user_key != nil {
 				res := UserKeyCompare(prev_user_key, current_user_key)
@@ -94,7 +94,7 @@ func (db *DB) doCompaction(c *compaction) error {
 			}
 			prev_user_key = current_user_key
 			meta.largest = current_user_key
-			builder.add(internal_key, iter.value())
+			builder.add(internal_key, iter.Value())
 			if builder.fileSize() > uint64(db.option.MaxFileSize) {
 				break
 			}
@@ -120,7 +120,7 @@ func (db *DB) doCompaction(c *compaction) error {
 	return nil
 }
 
-func (db *DB) makeInputIterator(c *compaction) (*mergeIterator, error) {
+func (db *DB) makeInputIterator(c *compaction) (Iterator, error) {
 	list := make([]*sstableIterator, 0)
 	for i := 0; i < 2; i++ {
 		for j := 0; j < len(c.inputs[i]); j++ {

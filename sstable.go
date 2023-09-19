@@ -135,10 +135,6 @@ func (iter *blockIterator) SeekToFirst() {
 	iter.Next()
 }
 
-func (iter *blockIterator) SeekToLast() {
-	panic("blockIterator.SeekToLast() Unimplement!")
-}
-
 func (iter *blockIterator) SeekToRestartPoint(index uint32) {
 	iter.cur_offset = iter.b.getRestartPoint(index)
 	iter.Next()
@@ -193,10 +189,6 @@ func (iter *blockIterator) parseNextEntry() (InternalKey, []byte, uint32) {
 	}
 	next_value := v
 	return next_key, next_value, encode_len
-}
-
-func (iter *blockIterator) Prev() {
-	panic("blockIterator.Prev() Unimplement!")
 }
 
 func (iter *blockIterator) Key() []byte {
@@ -293,10 +285,6 @@ func (iter *sstableIterator) SeekToFirst() {
 	iter.data_block_iter.SeekToFirst()
 }
 
-func (iter *sstableIterator) SeekToLast() {
-	panic("Not implement.")
-}
-
 func (iter *sstableIterator) Seek(target interface{}) {
 	if iter.index_block_iter == nil {
 		iter.index_block_iter = newBlockIterator(iter.table.indexblock)
@@ -327,10 +315,6 @@ func (iter *sstableIterator) parseDataBlock(handle *blockHandle) {
 	iter.data_block_iter = newBlockIterator(newBlock(block_data))
 }
 
-func (iter *sstableIterator) Prev() {
-	panic("Not implement.")
-}
-
 func (iter *sstableIterator) Key() []byte {
 	return iter.data_block_iter.key
 }
@@ -338,3 +322,5 @@ func (iter *sstableIterator) Key() []byte {
 func (iter *sstableIterator) Value() []byte {
 	return iter.data_block_iter.value
 }
+
+var _ Iterator = (*sstableIterator)(nil)

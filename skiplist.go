@@ -213,3 +213,5 @@ func (it *SkipListIterator) SeekToLast() {
 		it.node = nil
 	}
 }
+
+var _ Iterator = (*SkipListIterator)(nil)

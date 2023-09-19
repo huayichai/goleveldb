@@ -11,31 +11,33 @@ func newMergeIterator(list []*sstableIterator) *mergeIterator {
 	return &iter
 }
 
-func (iter *mergeIterator) valid() bool {
+func (iter *mergeIterator) Valid() bool {
 	return iter.current != nil && iter.current.Valid()
 }
 
-func (iter *mergeIterator) internalKey() InternalKey {
+func (iter *mergeIterator) Key() []byte {
 	return iter.current.Key()
 }
 
-func (iter *mergeIterator) value() []byte {
+func (iter *mergeIterator) Value() []byte {
 	return iter.current.Value()
 }
 
-func (iter *mergeIterator) next() {
+func (iter *mergeIterator) Next() {
 	if iter.current != nil {
 		iter.current.Next()
 	}
 	iter.findSmallest()
 }
 
-func (iter *mergeIterator) seekToFirst() {
+func (iter *mergeIterator) SeekToFirst() {
 	for i := 0; i < len(iter.list); i++ {
 		iter.list[i].SeekToFirst()
 	}
 	iter.findSmallest()
 }
+
+func (iter *mergeIterator) Seek(target interface{}) {}
 
 func (iter *mergeIterator) findSmallest() {
 	var smallest *sstableIterator = nil
@@ -50,3 +52,5 @@ func (iter *mergeIterator) findSmallest() {
 	}
 	iter.current = smallest
 }
+
+var _ Iterator = (*mergeIterator)(nil)
