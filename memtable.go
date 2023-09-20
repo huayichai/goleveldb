@@ -8,35 +8,34 @@ type memTable struct {
 
 func newMemTable(logPath string) *memTable {
 	var memtable memTable
-	memtable.table = New()
+	memtable.table = newSkipList()
 	memtable.memoryUsage = 0
 	memtable.logPath = logPath
 	return &memtable
 }
 
 func (mem *memTable) add(seq SequenceNumber, valueType ValueType, key, value []byte) {
-	// construct memtable key
-	memkey := NewKVEntry(seq, valueType, key, value)
+	// construct internal key
+	internal_key := NewInternalKey(key, seq, valueType)
 	// insert into memiplist
-	mem.table.Insert([]byte(memkey))
-	mem.memoryUsage += uint64(len(memkey))
+	mem.table.Insert(internal_key, value)
+	mem.memoryUsage += uint64(len(internal_key) + len(value))
 }
 
 // Return value, status
 // status = ErrKeyNotFound means key not in memtable
 // status = errKeyDeleted  means key was been deleted
 // status = nil            menas find key and return value
-func (mem *memTable) get(key LookupKey) ([]byte, error) {
+func (mem *memTable) get(key InternalKey) ([]byte, error) {
 	iter := mem.table.NewIterator()
 	iter.Seek([]byte(key))
 	if iter.Valid() {
-		memkey := KVEntry(iter.Key())
-		internal_key := memkey.ExtractInternalKey()
-		if UserKeyCompare(internal_key.ExtractUserKey(), key.ExtractUserKey()) == 0 {
-			if internal_key.ExtractValueType() == KTypeDeletion {
+		lookuped_key := InternalKey(iter.Key())
+		if UserKeyCompare(lookuped_key.ExtractUserKey(), key.ExtractUserKey()) == 0 {
+			if lookuped_key.ExtractValueType() == KTypeDeletion {
 				return nil, errKeyDeleted
 			} else {
-				return memkey.ExtractValue(), nil
+				return iter.Value(), nil
 			}
 		}
 	}

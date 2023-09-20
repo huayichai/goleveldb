@@ -6,17 +6,19 @@ import (
 )
 
 type Node struct {
-	key  interface{}
-	next []*Node
+	key   []byte
+	value []byte
+	next  []*Node
 }
 
-func newNode(key interface{}, height int) *Node {
+func newNode(key, value []byte, height int) *Node {
 	x := new(Node)
 	x.key = key
+	x.value = value
 	x.next = make([]*Node, height)
-
 	return x
 }
+
 func (node *Node) getNext(level int) *Node {
 	return node.next[level]
 }
@@ -36,14 +38,14 @@ type SkipList struct {
 	mu        sync.RWMutex
 }
 
-func New() *SkipList {
+func newSkipList() *SkipList {
 	var skiplist SkipList
-	skiplist.head = newNode(nil, kMaxHeight)
+	skiplist.head = newNode(nil, nil, kMaxHeight)
 	skiplist.maxHeight = 1
 	return &skiplist
 }
 
-func (list *SkipList) Insert(key interface{}) {
+func (list *SkipList) Insert(key, value []byte) {
 	list.mu.Lock()
 	defer list.mu.Unlock()
 
@@ -55,18 +57,18 @@ func (list *SkipList) Insert(key interface{}) {
 		}
 		list.maxHeight = height
 	}
-	x := newNode(key, height)
+	x := newNode(key, value, height)
 	for i := 0; i < height; i++ {
 		x.setNext(i, prev[i].getNext(i))
 		prev[i].setNext(i, x)
 	}
 }
 
-func (list *SkipList) Contains(key interface{}) bool {
+func (list *SkipList) Contains(key []byte) bool {
 	list.mu.RLock()
 	defer list.mu.RUnlock()
 	x, _ := list.findGreaterOrEqual(key)
-	if x != nil && LookupKeyCompare(x.key.([]byte), key.([]byte)) == 0 {
+	if x != nil && InternalKeyCompare(x.key, key) == 0 {
 		return true
 	}
 	return false
@@ -86,7 +88,7 @@ func (list *SkipList) randomHeight() int {
 	return height
 }
 
-func (list *SkipList) findGreaterOrEqual(key interface{}) (*Node, [kMaxHeight]*Node) {
+func (list *SkipList) findGreaterOrEqual(key []byte) (*Node, [kMaxHeight]*Node) {
 	var prev [kMaxHeight]*Node
 	x := list.head
 	level := list.maxHeight - 1
@@ -106,12 +108,12 @@ func (list *SkipList) findGreaterOrEqual(key interface{}) (*Node, [kMaxHeight]*N
 	}
 }
 
-func (list *SkipList) findLessThan(key interface{}) *Node {
+func (list *SkipList) findLessThan(key []byte) *Node {
 	x := list.head
 	level := list.maxHeight - 1
 	for {
 		next := x.getNext(level)
-		if next == nil || LookupKeyCompare(next.key.([]byte), key.([]byte)) >= 0 {
+		if next == nil || InternalKeyCompare(next.key, key) >= 0 {
 
 			if level == 0 {
 				return x
@@ -140,8 +142,8 @@ func (list *SkipList) findlast() *Node {
 	}
 }
 
-func (list *SkipList) keyIsAfterNode(key interface{}, n *Node) bool {
-	return (n != nil) && (LookupKeyCompare(n.key.([]byte), key.([]byte)) < 0)
+func (list *SkipList) keyIsAfterNode(key []byte, n *Node) bool {
+	return (n != nil) && (InternalKeyCompare(key, n.key) >= 0)
 }
 
 type SkipListIterator struct {
@@ -157,11 +159,11 @@ func (it *SkipListIterator) Valid() bool {
 // Returns the key at the current position.
 // REQUIRES: Valid()
 func (it *SkipListIterator) Key() []byte {
-	return it.node.key.([]byte)
+	return it.node.key
 }
 
 func (it *SkipListIterator) Value() []byte {
-	return it.node.key.([]byte)
+	return it.node.value
 }
 
 // Advances to the next position.
@@ -190,7 +192,7 @@ func (it *SkipListIterator) Seek(target interface{}) {
 	it.list.mu.RLock()
 	defer it.list.mu.RUnlock()
 
-	it.node, _ = it.list.findGreaterOrEqual(target)
+	it.node, _ = it.list.findGreaterOrEqual(target.([]byte))
 }
 
 // Position at the first entry in list.

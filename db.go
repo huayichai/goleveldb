@@ -82,14 +82,14 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	imm := db.imm
 	current := db.current
 
-	lookup_key := NewLookupKey(key, snapshot)
-	v, status := mem.get(lookup_key)
+	internal_key := NewInternalKey(key, snapshot, KTypeValue)
+	v, status := mem.get(internal_key)
 	if status == nil {
 		return v, nil
 	} else if status == errKeyDeleted {
 		return nil, ErrKeyNotFound
 	} else if imm != nil {
-		v, status = imm.get(lookup_key)
+		v, status = imm.get(internal_key)
 		if status == nil {
 			return v, nil
 		} else if status == errKeyDeleted {
@@ -99,7 +99,7 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 
 	db.muCompaction.Lock()
 	defer db.muCompaction.Unlock()
-	value, err := current.get(lookup_key.ExtractInternalKey())
+	value, err := current.get(internal_key)
 	return value, err
 }
 
@@ -218,12 +218,11 @@ func (db *DB) writeLevel0Table(imm *memTable, ver *version) error {
 	iter := imm.iterator()
 	iter.SeekToFirst()
 	if iter.Valid() {
-		memkey := KVEntry(iter.Key())
-		meta.smallest = memkey.ExtractInternalKey()
+		internal_key := InternalKey(iter.Key())
+		meta.smallest = internal_key
 		for ; iter.Valid(); iter.Next() {
-			memkey = KVEntry(iter.Key())
-			internal_key := memkey.ExtractInternalKey()
-			value := memkey.ExtractValue()
+			internal_key = InternalKey(iter.Key())
+			value := iter.Value()
 			meta.largest = internal_key
 			builder.add(internal_key, value)
 		}
