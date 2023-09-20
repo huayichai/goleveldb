@@ -63,8 +63,8 @@ We put a million entries into db. Each entry has a 16 byte key, and a 110 byte v
 
 ```
 Benchmark Entries: 1000000
-Throughput: 262191 QPS
-Latency: 3.814 micros/op; 31.5 MB/s
-Spatial amplification: 1.234, real data size: 148.261 (MB), raw data size: 120.163 (MB)
+Throughput: 267165 QPS
+Latency: 3.743 micros/op; 32.1 MB/s
+Spatial amplification: 1.188, real data size: 142.713 (MB), raw data size: 120.163 (MB)
 DB close successfully! Bye~PASS
 ```

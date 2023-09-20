@@ -121,15 +121,40 @@ func (db *DB) doCompaction(c *compaction) error {
 }
 
 func (db *DB) makeInputIterator(c *compaction) (Iterator, error) {
-	list := make([]*sstableIterator, 0)
-	for i := 0; i < 2; i++ {
-		for j := 0; j < len(c.inputs[i]); j++ {
-			table, err := db.cache.getTable(c.inputs[i][j].number)
+	list := make([][]Iterator, 0)
+	// first level
+	if c.level == 0 {
+		for i := 0; i < len(c.inputs[0]); i++ {
+			table, err := db.cache.getTable(c.inputs[0][i].number)
 			if err != nil {
 				return nil, err
 			}
-			list = append(list, newSSTableIterator(table))
+			tmp := make([]Iterator, 0)
+			tmp = append(tmp, newSSTableIterator(table))
+			list = append(list, tmp)
 		}
+	} else {
+		tmp := make([]Iterator, 0)
+		for i := 0; i < len(c.inputs[0]); i++ {
+			table, err := db.cache.getTable(c.inputs[0][i].number)
+			if err != nil {
+				return nil, err
+			}
+			tmp = append(tmp, newSSTableIterator(table))
+		}
+		list = append(list, tmp)
 	}
-	return newMergeIterator(list), nil
+
+	// second level
+	tmp := make([]Iterator, 0)
+	for i := 0; i < len(c.inputs[1]); i++ {
+		table, err := db.cache.getTable(c.inputs[1][i].number)
+		if err != nil {
+			return nil, err
+		}
+		tmp = append(tmp, newSSTableIterator(table))
+	}
+	list = append(list, tmp)
+
+	return newDeduplicationIterator(newMergeIterator(list)), nil
 }
