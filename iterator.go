@@ -10,18 +10,14 @@ type Iterator interface {
 }
 
 type sortedLevelIterator struct {
-	list                []Iterator // sorted iterator
-	pos                 uint32     // current iterator position
-	cur_userkey         UserKey    // current user key
-	cur_userkey_deleted bool       // whether cur key is deleted
+	list []Iterator // sorted iterator
+	pos  uint32     // current iterator position
 }
 
 func newSortedLevelIterator(list []Iterator) *sortedLevelIterator {
 	var iter sortedLevelIterator
 	iter.list = list
 	iter.pos = 0
-	iter.cur_userkey = []byte("")
-	iter.cur_userkey_deleted = false
 	return &iter
 }
 
@@ -39,7 +35,15 @@ func (iter *sortedLevelIterator) SeekToFirst() {
 	iter.list[0].SeekToFirst()
 }
 
-func (iter *sortedLevelIterator) Seek(target interface{}) {}
+func (iter *sortedLevelIterator) Seek(target interface{}) {
+	for i := 0; i < len(iter.list); i++ {
+		iter.list[i].Seek(target)
+		if InternalKeyCompare(iter.list[i].Key(), target.(InternalKey)) >= 0 {
+			iter.pos = uint32(i)
+			break
+		}
+	}
+}
 
 func (iter *sortedLevelIterator) Next() {
 	level_num := uint32(len(iter.list))
@@ -66,10 +70,8 @@ func (iter *sortedLevelIterator) Value() []byte {
 var _ Iterator = (*sortedLevelIterator)(nil)
 
 type mergeIterator struct {
-	list                 []Iterator
-	current              Iterator
-	prev_userkey         UserKey // prev user key
-	prev_userkey_deleted bool    // whether prev key is deleted
+	list    []Iterator
+	current Iterator
 }
 
 func newMergeIterator(list [][]Iterator) *mergeIterator {
@@ -77,8 +79,6 @@ func newMergeIterator(list [][]Iterator) *mergeIterator {
 	for i := 0; i < len(list); i++ {
 		iter.list = append(iter.list, newSortedLevelIterator(list[i]))
 	}
-	iter.prev_userkey = []byte("")
-	iter.prev_userkey_deleted = false
 	return &iter
 }
 
@@ -108,7 +108,12 @@ func (iter *mergeIterator) SeekToFirst() {
 	iter.findSmallest()
 }
 
-func (iter *mergeIterator) Seek(target interface{}) {}
+func (iter *mergeIterator) Seek(target interface{}) {
+	for i := 0; i < len(iter.list); i++ {
+		iter.list[i].Seek(target)
+	}
+	iter.findSmallest()
+}
 
 func (iter *mergeIterator) findSmallest() {
 	var smallest Iterator = nil
@@ -173,7 +178,9 @@ func (iter *deduplicationIterator) nextExist() {
 	}
 }
 
-func (iter *deduplicationIterator) Seek(target interface{}) {}
+func (iter *deduplicationIterator) Seek(target interface{}) {
+	iter.input.Seek(target)
+}
 
 func (iter *deduplicationIterator) Key() []byte {
 	return iter.input.Key()

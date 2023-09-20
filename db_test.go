@@ -52,6 +52,36 @@ func TestDB_Basic(t *testing.T) {
 	os.RemoveAll(path)
 }
 
+func TestDB_Scan(t *testing.T) {
+	path := "/tmp/goleveldb-mydb"
+	os.RemoveAll(path)
+	option := DefaultOptions()
+	option.DirPath = path
+	option.BlockSize = 1024
+	option.MemTableSize = 1024 * 64
+
+	db, _ := Open(*option)
+	defer db.Close()
+
+	test_num := 10000
+	for i := 0; i < test_num; i++ {
+		key := fmt.Sprintf("%06dtest", i)
+		value := fmt.Sprintf("value%06d", i)
+		db.Put([]byte(key), []byte(value))
+	}
+
+	iter, _ := db.Scan([]byte(fmt.Sprintf("%06dtest", 1000)))
+	for i := 1000; i < 5000; i++ {
+		if !iter.Valid() {
+			t.Fatalf("Scan %s failed\n", fmt.Sprintf("%06dtest", i))
+		}
+		v := iter.Value()
+		if Compare(v, []byte(fmt.Sprintf("value%06d", i))) != 0 {
+			t.Fatalf("Scan %s failed\n", fmt.Sprintf("%06dtest", i))
+		}
+	}
+}
+
 func TestDB1(t *testing.T) {
 	path := "/tmp/goleveldb-mydb"
 	os.RemoveAll(path)

@@ -103,6 +103,61 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 	return value, err
 }
 
+func (db *DB) Scan(key []byte) (Iterator, error) {
+	snapshot := db.current.lastSequence
+	internal_key := NewInternalKey(key, snapshot, KTypeValue)
+
+	var list [][]Iterator
+	db.muCompaction.Lock()
+	defer db.muCompaction.Unlock()
+
+	var l1 []Iterator
+	if db.mem != nil {
+		l1 = append(l1, db.mem.iterator())
+		list = append(list, l1)
+	}
+
+	var l2 []Iterator
+	if db.imm != nil {
+		l2 = append(l2, db.imm.iterator())
+		list = append(list, l2)
+	}
+
+	for i := 0; i < len(db.current.files); i++ {
+		level_num := len(db.current.files[i])
+		if level_num == 0 {
+			break
+		}
+		if i == 0 {
+			for j := 0; j < level_num; j++ {
+				table, err := db.cache.getTable(db.current.files[i][j].number)
+				if err != nil {
+					return nil, err
+				}
+				var tmp []Iterator
+				tmp = append(tmp, newSSTableIterator(table))
+				list = append(list, tmp)
+			}
+		} else {
+			var tmp []Iterator
+			for j := 0; j < level_num; j++ {
+				table, err := db.cache.getTable(db.current.files[i][j].number)
+				if err != nil {
+					return nil, err
+				}
+				tmp = append(tmp, newSSTableIterator(table))
+
+			}
+			list = append(list, tmp)
+		}
+	}
+
+	iter := newDeduplicationIterator(newMergeIterator(list))
+
+	iter.Seek(internal_key)
+	return iter, nil
+}
+
 func (db *DB) Delete(key []byte) error {
 	if err := db.makeRoomForWrite(); err != nil {
 		return err
