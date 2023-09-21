@@ -70,8 +70,8 @@ func TestDB_Scan(t *testing.T) {
 		db.Put([]byte(key), []byte(value))
 	}
 
-	iter, _ := db.Scan([]byte(fmt.Sprintf("%06dtest", 1000)))
-	for i := 1000; i < 5000; i++ {
+	iter, _ := db.Scan([]byte(fmt.Sprintf("%06dtest", 10)))
+	for i := 10; i < 9990; i++ {
 		if !iter.Valid() {
 			t.Fatalf("Scan %s failed\n", fmt.Sprintf("%06dtest", i))
 		}
@@ -79,6 +79,7 @@ func TestDB_Scan(t *testing.T) {
 		if Compare(v, []byte(fmt.Sprintf("value%06d", i))) != 0 {
 			t.Fatalf("Scan %s failed\n", fmt.Sprintf("%06dtest", i))
 		}
+		iter.Next()
 	}
 }
 

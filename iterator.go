@@ -117,12 +117,18 @@ func (iter *mergeIterator) Seek(target interface{}) {
 
 func (iter *mergeIterator) findSmallest() {
 	var smallest Iterator = nil
+	var smallest_key []byte
 	for i := 0; i < len(iter.list); i++ {
 		if iter.list[i].Valid() {
 			if smallest == nil {
 				smallest = iter.list[i]
-			} else if InternalKeyCompare(smallest.Key(), iter.list[i].Key()) > 0 {
+				smallest_key = smallest.Key()
+				continue
+			}
+			i_key := iter.list[i].Key()
+			if InternalKeyCompare(smallest_key, i_key) > 0 {
 				smallest = iter.list[i]
+				smallest_key = i_key
 			}
 		}
 	}
@@ -163,6 +169,7 @@ func (iter *deduplicationIterator) Next() {
 
 func (iter *deduplicationIterator) nextExist() {
 	var key InternalKey
+	iter.input.Next()
 	for {
 		key = iter.input.Key()
 		if UserKeyCompare(key.ExtractUserKey(), iter.prev_userkey) == 0 {

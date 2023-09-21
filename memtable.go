@@ -28,7 +28,7 @@ func (mem *memTable) add(seq SequenceNumber, valueType ValueType, key, value []b
 // status = nil            menas find key and return value
 func (mem *memTable) get(key InternalKey) ([]byte, error) {
 	iter := mem.table.NewIterator()
-	iter.Seek([]byte(key))
+	iter.Seek(key)
 	if iter.Valid() {
 		lookuped_key := InternalKey(iter.Key())
 		if UserKeyCompare(lookuped_key.ExtractUserKey(), key.ExtractUserKey()) == 0 {

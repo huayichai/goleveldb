@@ -192,7 +192,7 @@ func (it *SkipListIterator) Seek(target interface{}) {
 	it.list.mu.RLock()
 	defer it.list.mu.RUnlock()
 
-	it.node, _ = it.list.findGreaterOrEqual(target.([]byte))
+	it.node, _ = it.list.findGreaterOrEqual(target.(InternalKey))
 }
 
 // Position at the first entry in list.

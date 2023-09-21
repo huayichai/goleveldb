@@ -123,11 +123,12 @@ type blockIterator struct {
 func newBlockIterator(b *block) *blockIterator {
 	var iter blockIterator
 	iter.b = b
+	iter.key = nil
 	return &iter
 }
 
 func (iter *blockIterator) Valid() bool {
-	return iter.cur_offset < uint32(len(iter.b.data))
+	return iter.key != nil
 }
 
 func (iter *blockIterator) SeekToFirst() {
@@ -140,6 +141,8 @@ func (iter *blockIterator) SeekToRestartPoint(index uint32) {
 	iter.Next()
 }
 
+// Seek the first key that graeter ot equal than target
+// If all keys in block less than target, return the last key value.
 func (iter *blockIterator) Seek(target interface{}) {
 	// binary search by resarts
 	left := uint32(0)
@@ -161,15 +164,21 @@ func (iter *blockIterator) Seek(target interface{}) {
 
 	iter.SeekToRestartPoint(left)
 
-	for ; iter.Valid(); iter.Next() {
+	for ; iter.nextValid(); iter.Next() {
 		if Compare(iter.key, target.(InternalKey).ExtractUserKey()) >= 0 {
 			return
 		}
 	}
 }
 
+func (iter *blockIterator) nextValid() bool {
+	return iter.cur_offset < uint32(len(iter.b.data))
+}
+
 func (iter *blockIterator) Next() {
-	if !iter.Valid() {
+	if !iter.nextValid() {
+		iter.key = nil
+		iter.value = nil
 		return
 	}
 	var encode_len uint32
@@ -268,9 +277,11 @@ func newSSTableIterator(table *sstable) *sstableIterator {
 }
 
 func (iter *sstableIterator) Valid() bool {
-	index_v := iter.index_block_iter.Valid()
-	data_v := iter.data_block_iter.Valid()
-	return index_v || data_v
+	if iter.data_block_iter.Valid() {
+		return true
+	}
+	iter.nextDataBlock()
+	return iter.data_block_iter.Valid()
 }
 
 func (iter *sstableIterator) SeekToFirst() {
@@ -301,12 +312,20 @@ func (iter *sstableIterator) Seek(target interface{}) {
 func (iter *sstableIterator) Next() {
 	if iter.data_block_iter.Valid() {
 		iter.data_block_iter.Next()
-	} else if iter.index_block_iter.Valid() {
+	} else {
+		iter.nextDataBlock()
+	}
+}
+
+func (iter *sstableIterator) nextDataBlock() {
+	if iter.index_block_iter.Valid() {
 		iter.index_block_iter.Next()
-		var handle blockHandle
-		handle.decodeFrom(iter.index_block_iter.value)
-		iter.parseDataBlock(&handle)
-		iter.data_block_iter.SeekToFirst()
+		if iter.index_block_iter.Valid() {
+			var handle blockHandle
+			handle.decodeFrom(iter.index_block_iter.value)
+			iter.parseDataBlock(&handle)
+			iter.data_block_iter.SeekToFirst()
+		}
 	}
 }
 
