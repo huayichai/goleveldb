@@ -157,8 +157,13 @@ func (iter *deduplicationIterator) Valid() bool {
 }
 
 func (iter *deduplicationIterator) SeekToFirst() {
-	iter.SeekToFirst()
-	iter.nextExist()
+	iter.input.SeekToFirst()
+	key := InternalKey(iter.Key())
+	iter.prev_userkey = key.ExtractUserKey()
+	iter.prev_userkey_deleted = key.ExtractValueType() == KTypeDeletion
+	if iter.prev_userkey_deleted {
+		iter.nextExist()
+	}
 }
 
 func (iter *deduplicationIterator) Next() {
@@ -167,10 +172,11 @@ func (iter *deduplicationIterator) Next() {
 	}
 }
 
+// find next exist entry
 func (iter *deduplicationIterator) nextExist() {
 	var key InternalKey
 	iter.input.Next()
-	for {
+	for iter.Valid() {
 		key = iter.input.Key()
 		if UserKeyCompare(key.ExtractUserKey(), iter.prev_userkey) == 0 {
 			iter.input.Next()

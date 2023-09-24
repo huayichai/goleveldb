@@ -1,9 +1,12 @@
 package goleveldb
 
+import "sync"
+
 type memTable struct {
 	table       *SkipList
 	memoryUsage uint64
 	logPath     string
+	mu          sync.Mutex
 }
 
 func newMemTable(logPath string) *memTable {
@@ -19,7 +22,11 @@ func (mem *memTable) add(seq SequenceNumber, valueType ValueType, key, value []b
 	internal_key := NewInternalKey(key, seq, valueType)
 	// insert into memiplist
 	mem.table.Insert(internal_key, value)
+
+	// update memory use
+	mem.mu.Lock()
 	mem.memoryUsage += uint64(len(internal_key) + len(value))
+	mem.mu.Unlock()
 }
 
 // Return value, status

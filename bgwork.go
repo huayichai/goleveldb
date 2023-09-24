@@ -43,10 +43,12 @@ func (db *DB) compactMemTable() error {
 
 func (db *DB) maybeScheduleCompaction() error {
 	db.muCompaction.Lock()
-	defer db.muCompaction.Unlock()
 	if db.imm != nil {
+		db.muCompaction.Unlock()
 		return db.compactMemTable()
 	}
+
+	defer db.muCompaction.Unlock()
 	c := db.current.pickCompaction()
 	if c == nil {
 		return nil
@@ -93,7 +95,7 @@ func (db *DB) doCompaction(c *compaction) error {
 				}
 			}
 			prev_user_key = current_user_key
-			meta.largest = current_user_key
+			meta.largest = internal_key
 			builder.add(internal_key, iter.Value())
 			if builder.fileSize() > uint64(db.option.MaxFileSize) {
 				break

@@ -66,21 +66,29 @@ func (db *DB) Put(key, value []byte) error {
 	if err := db.makeRoomForWrite(); err != nil {
 		return err
 	}
+
+	db.mu.Lock()
 	seq := db.current.lastSequence
 	db.current.lastSequence++
+	db.mu.Unlock()
 
+	// write ahead log
 	if err := db.logWriter.addRecord([]byte(NewKVEntry(seq, KTypeValue, key, value))); err != nil {
 		return err
 	}
+
+	// insert into memtable
 	db.mem.add(seq, KTypeValue, key, value)
 	return nil
 }
 
 func (db *DB) Get(key []byte) ([]byte, error) {
+	db.mu.Lock()
 	snapshot := db.current.lastSequence
 	mem := db.mem
 	imm := db.imm
 	current := db.current
+	db.mu.Unlock()
 
 	internal_key := NewInternalKey(key, snapshot, KTypeValue)
 	v, status := mem.get(internal_key)
@@ -163,8 +171,10 @@ func (db *DB) Delete(key []byte) error {
 		return err
 	}
 
+	db.mu.Lock()
 	seq := db.current.lastSequence
 	db.current.lastSequence++
+	db.mu.Unlock()
 
 	if err := db.logWriter.addRecord([]byte(NewKVEntry(seq, KTypeDeletion, key, []byte{}))); err != nil {
 		return err
@@ -187,13 +197,16 @@ func (db *DB) makeRoomForWrite() error {
 		} else {
 			// Attempt to switch to a new memtable and trigger compaction of old
 			db.mu.Lock()
+			db.muCompaction.Lock()
 			if db.imm == nil {
 				if err := db.switchToNewMemTable(); err != nil {
+					db.muCompaction.Unlock()
 					db.mu.Unlock()
 					return err
 				}
-				db.immExistCh <- true
+				db.immExistCh <- true // notify background compaction
 			}
+			db.muCompaction.Unlock()
 			db.mu.Unlock()
 		}
 	}
@@ -301,6 +314,7 @@ func (db *DB) saveManifestFile() error {
 	return nil
 }
 
+// switch mem to imm, and create new memtable and walWriter
 func (db *DB) switchToNewMemTable() error {
 	// switch mem to imm
 	db.imm = db.mem
@@ -362,4 +376,13 @@ func (db *DB) SpaceConsumption() (int64, error) {
 		return err
 	})
 	return size, err
+}
+
+func (db *DB) PrintLevelInfo() {
+	db.mu.Lock()
+	db.muCompaction.Lock()
+	defer db.muCompaction.Unlock()
+	defer db.mu.Unlock()
+
+	db.current.info()
 }

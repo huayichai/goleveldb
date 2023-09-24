@@ -2,6 +2,7 @@ package goleveldb
 
 import (
 	"encoding/binary"
+	"fmt"
 	"log"
 	"sort"
 )
@@ -69,7 +70,7 @@ func (v *version) addFile(level int, meta *fileMetaData) {
 		}
 	}
 	if Debug {
-		log.Printf("doCompaction add level %d file %d [smallest %s, largest %s]\n", level, meta.number, meta.smallest, meta.largest)
+		log.Printf("doCompaction add level %d file %d [smallest %s, largest %s]\n", level, meta.number, meta.smallest.ExtractUserKey(), meta.largest.ExtractUserKey())
 	}
 }
 
@@ -78,6 +79,9 @@ func (v *version) addFile(level int, meta *fileMetaData) {
 // and evicted from cache.
 // Specifically, when compaction is trivial move, 'disk' should be set to false.
 func (v *version) deleteFile(level int, meta *fileMetaData, disk bool) error {
+	if Debug {
+		log.Printf("doCompaction remove level %d file %d [smallest %s, largest %s]\n", level, meta.number, meta.smallest.ExtractUserKey(), meta.largest.ExtractUserKey())
+	}
 	numfiles := len(v.files[level])
 	for i := 0; i < numfiles; i++ {
 		if v.files[level][i].number == meta.number {
@@ -88,9 +92,6 @@ func (v *version) deleteFile(level int, meta *fileMetaData, disk bool) error {
 	if disk {
 		v.cache.evict(meta.number)
 		return RemoveFile(sstableFileName(v.cache.option.DirPath, meta.number))
-	}
-	if Debug {
-		log.Printf("doCompaction remove level %d file %d [smallest %s, largest %s]\n", level, meta.number, meta.smallest, meta.largest)
 	}
 	return nil
 }
@@ -198,4 +199,19 @@ func (v *version) findFile(metas []*fileMetaData, user_key UserKey) int {
 		}
 	}
 	return right
+}
+
+func (v *version) info() {
+	for i := 0; i < len(v.files); i++ {
+		n := len(v.files[i])
+		if n == 0 {
+			break
+		}
+		fmt.Println("==========")
+		fmt.Printf("Level %d:\n", i)
+		for j := 0; j < n; j++ {
+			meta := v.files[i][j]
+			fmt.Printf("file %d [smallest %s, largest %s]\n", meta.number, meta.smallest.ExtractUserKey(), meta.largest.ExtractUserKey())
+		}
+	}
 }

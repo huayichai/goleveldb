@@ -2,20 +2,35 @@ package goleveldb
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
+	"sync"
 	"testing"
 	"time"
 )
 
-func TestDB_Basic(t *testing.T) {
+func openDB() (*DB, func()) {
 	path := "/tmp/goleveldb-mydb"
 	os.RemoveAll(path)
-	option := DefaultOptions()
-	option.DirPath = path
-	option.BlockSize = 1024
-	option.MemTableSize = 1024 * 64
+	options := DefaultOptions()
+	options.DirPath = path
+	options.BlockSize = 1024
+	options.MemTableSize = 1024 * 64
 
-	db, _ := Open(*option)
+	var err error
+	db, err := Open(*options)
+	if err != nil {
+		panic(err)
+	}
+	return db, func() {
+		_ = db.Close()
+		_ = os.RemoveAll(options.DirPath)
+	}
+}
+
+func TestDB_Basic(t *testing.T) {
+	db, destroy := openDB()
+	defer destroy()
 
 	test_num := 10000
 
@@ -47,21 +62,11 @@ func TestDB_Basic(t *testing.T) {
 			}
 		}
 	}
-
-	db.Close()
-	os.RemoveAll(path)
 }
 
 func TestDB_Scan(t *testing.T) {
-	path := "/tmp/goleveldb-mydb"
-	os.RemoveAll(path)
-	option := DefaultOptions()
-	option.DirPath = path
-	option.BlockSize = 1024
-	option.MemTableSize = 1024 * 64
-
-	db, _ := Open(*option)
-	defer db.Close()
+	db, destroy := openDB()
+	defer destroy()
 
 	test_num := 10000
 	for i := 0; i < test_num; i++ {
@@ -83,73 +88,6 @@ func TestDB_Scan(t *testing.T) {
 	}
 }
 
-func TestDB1(t *testing.T) {
-	path := "/tmp/goleveldb-mydb"
-	os.RemoveAll(path)
-	option := DefaultOptions()
-	option.DirPath = path
-	option.BlockSize = 1024
-	option.MemTableSize = 1024 * 64
-
-	db, _ := Open(*option)
-
-	test_num := 10000
-
-	for i := 0; i < test_num; i++ {
-		key := fmt.Sprintf("%06dtest", i)
-		value := fmt.Sprintf("value%06d", i)
-		db.Put([]byte(key), []byte(value))
-	}
-
-	for i := 0; i < test_num; i++ {
-		if i == 11 {
-			i = 11
-		}
-		key := fmt.Sprintf("%06dtest", i)
-		value := fmt.Sprintf("value%06d", i)
-		v, err := db.Get([]byte(key))
-		if err != nil {
-			t.Fatalf("lookup: %s err. %s\n", key, err.Error())
-		}
-		if value != string(v) {
-			t.Fatalf("Expect: %s, but get %s\n", value, v)
-		}
-	}
-
-	db.Close()
-	os.RemoveAll(path)
-}
-
-func TestDB2(t *testing.T) {
-	path := "/tmp/goleveldb-mydb"
-	os.RemoveAll(path)
-	option := DefaultOptions()
-	option.DirPath = path
-
-	db, _ := Open(*option)
-
-	for i := 0; i < 10000; i++ {
-		key := fmt.Sprintf("TestKey%09d", i)
-		value := fmt.Sprintf("TestValue%09d", i)
-		db.Put([]byte(key), []byte(value))
-	}
-
-	for i := 0; i < 10000; i++ {
-		key := fmt.Sprintf("TestKey%09d", i)
-		value := fmt.Sprintf("TestValue%09d", i)
-		v, err := db.Get([]byte(key))
-		if err != nil {
-			t.Fatalf("lookup: %s err. %s\n", key, err.Error())
-		}
-		if value != string(v) {
-			t.Fatalf("Expect: %s, but get %s\n", key, v)
-		}
-	}
-
-	db.Close()
-	os.RemoveAll(path)
-}
-
 func TestDB_Recover(t *testing.T) {
 	path := "/tmp/goleveldb-mydb"
 	os.RemoveAll(path)
@@ -157,6 +95,7 @@ func TestDB_Recover(t *testing.T) {
 	option.DirPath = path
 	option.BlockSize = 1024
 	option.MemTableSize = 1024 * 64
+
 	db, _ := Open(*option)
 	for i := 0; i < 5000; i++ {
 		key := fmt.Sprintf("%06dtest", i)
@@ -183,4 +122,46 @@ func TestDB_Recover(t *testing.T) {
 		}
 	}
 	os.RemoveAll(path)
+}
+
+func TestDB_concurrent_put(t *testing.T) {
+	db, destroy := openDB()
+	defer destroy()
+
+	thread_num := 2
+	test_num := 20000
+
+	var wg sync.WaitGroup
+	put_insert := func(start, end int) {
+		defer wg.Done()
+		for i := start; i < end; i++ {
+			time.Sleep(time.Duration(rand.Intn(5)) * time.Nanosecond)
+			key := []byte(fmt.Sprintf("%06dtest", i))
+			value := []byte(fmt.Sprintf("value%06d", i))
+			db.Put(key, value)
+		}
+	}
+
+	batch_num := test_num / thread_num
+	for i := 0; i < thread_num; i++ {
+		wg.Add(1)
+		start := batch_num * i
+		end := batch_num * (i + 1)
+		if end > test_num {
+			end = test_num
+		}
+		go put_insert(start, end)
+	}
+	wg.Wait()
+
+	db.PrintLevelInfo()
+
+	for i := 99999; i < test_num; i++ {
+		key := []byte(fmt.Sprintf("%06dtest", i))
+		value := []byte(fmt.Sprintf("value%06d", i))
+		v, _ := db.Get(key)
+		if Compare(v, value) != 0 {
+			t.Fatalf("Get key %s failed! Expect %s, but get %s\n", key, value, v)
+		}
+	}
 }

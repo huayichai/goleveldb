@@ -1,5 +1,7 @@
 package goleveldb
 
+import "sync"
+
 type recordType uint8
 
 const (
@@ -70,6 +72,7 @@ type walWriter struct {
 	dest        WritableFile
 	blockOffset uint32
 	sync        bool
+	mu          sync.Mutex
 }
 
 func newWALWriter(dest WritableFile, sync bool) *walWriter {
@@ -81,6 +84,8 @@ func newWALWriter(dest WritableFile, sync bool) *walWriter {
 }
 
 func (writer *walWriter) addRecord(data []byte) error {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
 	ptr := data
 	left := len(ptr)
 	begin := true
