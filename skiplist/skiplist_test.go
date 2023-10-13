@@ -3,8 +3,10 @@ package skiplist
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"sync"
 	"testing"
+	"time"
 )
 
 func bytes_compare(lhs, rhs interface{}) int {
@@ -79,7 +81,7 @@ func TestFrontBack(t *testing.T) {
 	}
 }
 
-func TestConcurrencyInsert(t *testing.T) {
+func TestConcurrentInsert(t *testing.T) {
 	list := New(bytes_compare)
 
 	thread_num := 10
@@ -107,6 +109,45 @@ func TestConcurrencyInsert(t *testing.T) {
 	}
 	wg.Wait()
 
+	for i := 0; i < test_num; i++ {
+		key := []byte(fmt.Sprintf("key%06d", i))
+		value := []byte(fmt.Sprintf("value%06d", i))
+		v := list.Get(key).Value
+		if v == nil || bytes_compare(v, value) != 0 {
+			t.Fatalf("Get key %s failed! Expect %s, but %s\n", key, value, v.([]byte))
+		}
+	}
+}
+
+func TestInsertThroughput(t *testing.T) {
+	test_num := 1000000
+
+	// generate test data
+	key_arrays := make([]int, 0)
+	for i := 0; i < test_num; i++ {
+		key_arrays = append(key_arrays, i)
+	}
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(key_arrays), func(i, j int) {
+		key_arrays[i], key_arrays[j] = key_arrays[j], key_arrays[i]
+	})
+
+	// new skiplist instance
+	list := New(bytes_compare)
+
+	// insert
+	startTime := time.Now()
+	for i := 0; i < test_num; i++ {
+		key := []byte(fmt.Sprintf("key%06d", i))
+		value := []byte(fmt.Sprintf("value%06d", i))
+		list.Insert(key, value)
+	}
+	insertTime := time.Since(startTime) / time.Millisecond                      // ms
+	insertThroughput := int64(float64(test_num) / float64(insertTime) * 1000.0) // QPS
+	fmt.Println("SkipList single thread insert test.")
+	fmt.Printf("Insert entrys num: %d, throughput: %d\n", test_num, insertThroughput)
+
+	// check
 	for i := 0; i < test_num; i++ {
 		key := []byte(fmt.Sprintf("key%06d", i))
 		value := []byte(fmt.Sprintf("value%06d", i))

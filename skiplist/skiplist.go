@@ -3,20 +3,22 @@ package skiplist
 import (
 	"math/rand"
 	"sync"
+	"time"
 )
 
 const (
-	DefaultMaxLevel = 7
+	DefaultMaxLevel = 48
 )
 
 type SkipList struct {
 	head      *Node // not store any data
 	tail      *Node
 	maxHeight int
-	compare   Comparable
-	mu        sync.RWMutex
+	nums      int64
 
-	nums int64
+	compare Comparable
+	rand    *rand.Rand
+	mu      sync.RWMutex
 }
 
 func New(compare Comparable) *SkipList {
@@ -24,8 +26,10 @@ func New(compare Comparable) *SkipList {
 	list.head = newNode(DefaultMaxLevel, nil, nil)
 	list.tail = nil
 	list.maxHeight = 1
-	list.compare = compare
 	list.nums = 0
+
+	list.compare = compare
+	list.rand = rand.New(rand.NewSource(time.Now().UnixNano()))
 	return &list
 }
 
@@ -161,9 +165,14 @@ func (list *SkipList) findFirstLessThan(key interface{}) (*Node, []*Node) {
 }
 
 func (list *SkipList) randHeight() int {
-	h := int(rand.Int31() % DefaultMaxLevel)
-	if h < 1 {
-		return 1
+	estimated := DefaultMaxLevel
+	const prob = 1 << 30 // Half of 2^31.
+	rand := list.rand
+	i := 1
+	for ; i < estimated; i++ {
+		if rand.Int31() < prob {
+			break
+		}
 	}
-	return h
+	return i
 }
