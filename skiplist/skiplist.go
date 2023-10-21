@@ -33,7 +33,7 @@ func New(compare Comparable) *SkipList {
 	return &list
 }
 
-func (list *SkipList) Insert(key, value interface{}) *Node {
+func (list *SkipList) Insert(key, value []byte) *Node {
 	list.mu.Lock()
 	defer list.mu.Unlock()
 	isEqual, cur, prev := list.findGreaterOrEqual(key)
@@ -64,7 +64,7 @@ func (list *SkipList) Insert(key, value interface{}) *Node {
 	return node
 }
 
-func (list *SkipList) Delete(key interface{}) {
+func (list *SkipList) Delete(key []byte) {
 	list.mu.Lock()
 	defer list.mu.Unlock()
 	node, prev := list.findFirstLessThan(key)
@@ -85,7 +85,7 @@ func (list *SkipList) Delete(key interface{}) {
 
 // Get returns an node with the key.
 // If the key is not found, returns nil.
-func (list *SkipList) Get(key interface{}) *Node {
+func (list *SkipList) Get(key []byte) *Node {
 	list.mu.RLock()
 	defer list.mu.RUnlock()
 	isEqual, cur, _ := list.findGreaterOrEqual(key)
@@ -97,7 +97,7 @@ func (list *SkipList) Get(key interface{}) *Node {
 }
 
 // Find returns the first node that is greater or equal to key.
-func (list *SkipList) Find(key interface{}) *Node {
+func (list *SkipList) Find(key []byte) *Node {
 	list.mu.RLock()
 	defer list.mu.RUnlock()
 	_, cur, _ := list.findGreaterOrEqual(key)
@@ -120,9 +120,16 @@ func (list *SkipList) DataNum() int64 {
 	return list.nums
 }
 
+func (list *SkipList) NewIterator() *SkipListIterator {
+	return &SkipListIterator{
+		list: list,
+		node: list.head.Next(),
+	}
+}
+
 // findGreaterOrEqual returns the first node that greater or equal to key
 // @return isEqual, node, prev_node_list
-func (list *SkipList) findGreaterOrEqual(key interface{}) (bool, *Node, []*Node) {
+func (list *SkipList) findGreaterOrEqual(key []byte) (bool, *Node, []*Node) {
 	prev := make([]*Node, DefaultMaxLevel)
 	cur := list.head
 	level := list.maxHeight - 1
@@ -145,7 +152,7 @@ func (list *SkipList) findGreaterOrEqual(key interface{}) (bool, *Node, []*Node)
 	}
 }
 
-func (list *SkipList) findFirstLessThan(key interface{}) (*Node, []*Node) {
+func (list *SkipList) findFirstLessThan(key []byte) (*Node, []*Node) {
 	prev := make([]*Node, DefaultMaxLevel)
 	cur := list.head
 	level := list.maxHeight - 1

@@ -1,6 +1,6 @@
 package skiplist
 
-type Comparable func(lhs, rhs interface{}) int
+type Comparable func(lhs, rhs []byte) int
 
 type GreaterThanFunc Comparable
 type LessThanFunc Comparable

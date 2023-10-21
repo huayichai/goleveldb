@@ -1,12 +1,12 @@
 package skiplist
 
 type Node struct {
-	Key    interface{}
-	Value  interface{}
+	Key    []byte
+	Value  []byte
 	levels []*Node
 }
 
-func newNode(level int, key, value interface{}) *Node {
+func newNode(level int, key, value []byte) *Node {
 	var node Node
 	node.levels = make([]*Node, level)
 	node.Key = key
